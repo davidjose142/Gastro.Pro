@@ -2,24 +2,28 @@ import { useState } from "react";
 
 // ─── PALETA ───────────────────────────────────────────────────────────────────
 const C = {
-  bg: "#0f0f14",
-  surface: "#16161e",
-  card: "#1c1c28",
-  border: "#2a2a3d",
-  accent: "#c084fc",
-  accentDim: "#7c3aed",
-  accentGlow: "rgba(192,132,252,0.12)",
-  gold: "#fbbf24",
-  success: "#34d399",
-  danger: "#f87171",
-  warning: "#fb923c",
-  info: "#38bdf8",
-  text: "#e2e8f0",
-  muted: "#94a3b8",
-  faint: "#475569",
+  bg: "#ffffff",
+  surface: "#f0f4ff",
+  card: "#ffffff",
+  border: "#dbe4f5",
+  accent: "#2563eb",
+  accentDim: "#1e3a8a",
+  accentGlow: "rgba(37,99,235,0.10)",
+  gold: "#f59e0b",
+  success: "#10b981",
+  danger: "#ef4444",
+  warning: "#f97316",
+  info: "#0ea5e9",
+  text: "#0f172a",
+  muted: "#475569",
+  faint: "#94a3b8",
 };
 
 // ─── DATOS GLOBALES ───────────────────────────────────────────────────────────
+// ─── NOMBRE DEL RESTAURANTE ───────────────────────────────────────────────────
+const NOMBRE_RESTAURANTE = "GastroPRO";
+const SUBTITULO_RESTAURANTE = "Sistema de gestión hotelera";
+
 const STOCK = [
   { id: 1, nombre: "Harina de trigo", cantidad: 25, unidad: "kg", minimo: 5, categoria: "Secos" },
   { id: 2, nombre: "Azúcar blanca", cantidad: 15, unidad: "kg", minimo: 3, categoria: "Secos" },
@@ -360,13 +364,13 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Inter', system-ui, sans-serif", color: C.text }}>
       {/* Header */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "0 24px", position: "sticky", top: 0, zIndex: 100 }}>
+      <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`, padding: "0 24px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(37,99,235,0.07)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 16, height: 58 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>👨‍🍳</div>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>👨‍🍳</div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: C.text, lineHeight: 1 }}>GastroPRO</div>
-              <div style={{ fontSize: 10, color: C.faint }}>Sistema de gestión</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: C.text, lineHeight: 1 }}>{NOMBRE_RESTAURANTE}</div>
+              <div style={{ fontSize: 10, color: C.faint }}>{SUBTITULO_RESTAURANTE}</div>
             </div>
           </div>
           <div style={{ flex: 1 }} />
