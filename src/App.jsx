@@ -917,6 +917,258 @@ const ModuloTickets = ({ usuario, toast }) => {
     </div>
   );
 };
+
+const ModuloCaja = ({ usuario, toast }) => {
+  const [sesion, setSesion] = useState(undefined); // undefined=cargando, null=sin sesión, obj=abierta
+  const [movimientos, setMovimientos] = useState([]);
+  const [modalApertura, setModalApertura] = useState(false);
+  const [modalCierre, setModalCierre] = useState(false);
+  const [modalGasto, setModalGasto] = useState(false);
+  const [fondoInicial, setFondoInicial] = useState("200");
+  const [efectivoContado, setEfectivoContado] = useState("");
+  const [formGasto, setFormGasto] = useState({ descripcion: "", monto: "" });
+ 
+  const cargar = async () => {
+    // Buscar sesión abierta del día
+    const sesiones = await db("caja_sesiones", { filtro: `?estado=eq.abierta&order=created_at.desc&limit=1` });
+    if (sesiones?.length > 0) {
+      const s = sesiones[0];
+      setSesion(s);
+      const movs = await db("caja_movimientos", { filtro: `?sesion_id=eq.${s.id}&order=created_at.desc` });
+      setMovimientos(movs || []);
+    } else {
+      setSesion(null);
+      setMovimientos([]);
+    }
+  };
+  useEffect(() => { cargar(); }, []);
+ 
+  // Cálculos
+  const ventas = movimientos.filter((m) => m.tipo === "venta");
+  const gastos = movimientos.filter((m) => m.tipo === "gasto");
+  const totalEfectivo = ventas.filter((m) => m.metodo === "efectivo").reduce((s, m) => s + Number(m.monto), 0);
+  const totalTarjeta = ventas.filter((m) => m.metodo === "tarjeta").reduce((s, m) => s + Number(m.monto), 0);
+  const totalGastos = Math.abs(gastos.reduce((s, m) => s + Number(m.monto), 0));
+  const totalVentas = totalEfectivo + totalTarjeta;
+  const fondoIni = sesion ? Number(sesion.fondo_inicial) : 0;
+  const totalEsperado = fondoIni + totalEfectivo - totalGastos;
+  const ticketMedio = ventas.length > 0 ? totalVentas / ventas.length : 0;
+ 
+  const abrirCaja = async () => {
+    const nueva = {
+      estado: "abierta",
+      fondo_inicial: +fondoInicial,
+      cajero: usuario.nombre,
+      hora_apertura: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+    };
+    const res = await db("caja_sesiones", { metodo: "POST", cuerpo: nueva });
+    const sesionCreada = res?.[0];
+    if (sesionCreada) {
+      await db("caja_movimientos", { metodo: "POST", cuerpo: {
+        sesion_id: sesionCreada.id, tipo: "apertura",
+        descripcion: `Apertura de caja — ${usuario.nombre}`, monto: +fondoInicial, metodo: "efectivo",
+        hora: nueva.hora_apertura,
+      }});
+    }
+    setModalApertura(false);
+    toast("🔓 Caja abierta correctamente");
+    cargar();
+  };
+ 
+  const registrarGasto = async () => {
+    await db("caja_movimientos", { metodo: "POST", cuerpo: {
+      sesion_id: sesion.id, tipo: "gasto",
+      descripcion: formGasto.descripcion, monto: -Math.abs(+formGasto.monto), metodo: "efectivo",
+      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+    }});
+    setFormGasto({ descripcion: "", monto: "" });
+    setModalGasto(false);
+    toast("📤 Gasto registrado", C.warning);
+    cargar();
+  };
+ 
+  const cerrarCaja = async () => {
+    const diferencia = +efectivoContado - totalEsperado;
+    await db("caja_sesiones", { metodo: "PATCH", filtro: `?id=eq.${sesion.id}`, cuerpo: {
+      estado: "cerrada",
+      hora_cierre: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+      efectivo_contado: +efectivoContado,
+      diferencia,
+    }});
+    setModalCierre(false);
+    setEfectivoContado("");
+    toast(`🔒 Caja cerrada · ${diferencia >= 0 ? "Sobrante" : "Faltante"} €${Math.abs(diferencia).toFixed(2)}`, Math.abs(diferencia) < 1 ? C.success : C.warning);
+    cargar();
+  };
+ 
+  const tipoCfg = {
+    apertura: { color: C.accent, bg: C.accentLight, icon: "🔓" },
+    venta: { color: C.success, bg: C.successLight, icon: "💶" },
+    gasto: { color: C.danger, bg: C.dangerLight, icon: "📤" },
+  };
+ 
+  if (sesion === undefined) return <Cargando />;
+ 
+  // ─── CAJA CERRADA: pantalla de apertura ───
+  if (!sesion) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, padding: 48, maxWidth: 420, width: "100%", textAlign: "center", boxShadow: "0 4px 20px rgba(15,23,42,0.08)" }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🔒</div>
+          <h2 style={{ margin: "0 0 8px", color: C.text, fontSize: 22, fontWeight: 800 }}>Caja cerrada</h2>
+          <p style={{ color: C.muted, margin: "0 0 28px", fontSize: 14 }}>Abre la caja para comenzar el turno y registrar ventas</p>
+          <Btn full onClick={() => setModalApertura(true)} icon="🔓">Abrir caja</Btn>
+        </div>
+ 
+        {modalApertura && (
+          <Modal title="🔓 Abrir caja" subtitle="Registra el fondo inicial para comenzar" onClose={() => setModalApertura(false)}>
+            <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 6, fontWeight: 700 }}>Fondo inicial en caja (€)</label>
+            <input type="number" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)}
+              style={{ width: "100%", background: C.soft, border: `2px solid ${C.accent}`, borderRadius: 12, padding: "12px 14px", color: C.text, fontSize: 24, fontWeight: 800, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
+            <div style={{ background: C.accentLight, borderRadius: 12, padding: 14, marginBottom: 20, fontSize: 13, color: C.muted }}>
+              Cajero: <strong style={{ color: C.text }}>{usuario.nombre}</strong> · Hora: {new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="secondary" full onClick={() => setModalApertura(false)}>Cancelar</Btn>
+              <Btn variant="success" full onClick={abrirCaja} icon="🔓">Abrir caja</Btn>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+ 
+  // ─── CAJA ABIERTA ───
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>💶 Caja</h2>
+          <div style={{ background: C.successLight, border: `1px solid ${C.success}30`, borderRadius: 8, padding: "5px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.success }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.success }}>Abierta desde {sesion.hora_apertura}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" small onClick={() => setModalGasto(true)} icon="📤">Registrar gasto</Btn>
+          <Btn variant="danger" onClick={() => { setEfectivoContado(totalEsperado.toFixed(2)); setModalCierre(true); }} icon="🔒">Cerrar caja</Btn>
+        </div>
+      </div>
+ 
+      {/* KPIs */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
+        <KPICard icon="💶" label="Total ventas" value={`€${totalVentas.toFixed(2)}`} color={C.success} sub={`${ventas.length} ventas`} />
+        <KPICard icon="💵" label="Efectivo" value={`€${totalEfectivo.toFixed(2)}`} color={C.gold} />
+        <KPICard icon="💳" label="Tarjeta" value={`€${totalTarjeta.toFixed(2)}`} color={C.accent} />
+        <KPICard icon="📤" label="Gastos" value={`€${totalGastos.toFixed(2)}`} color={C.danger} />
+        <KPICard icon="🏦" label="Esperado en caja" value={`€${totalEsperado.toFixed(2)}`} color={C.success} />
+      </div>
+ 
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18 }}>
+        {/* Movimientos */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+          <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: C.text }}>📋 Movimientos del turno</h3>
+            <span style={{ fontSize: 12, color: C.muted }}>{movimientos.length} registros</span>
+          </div>
+          <div style={{ maxHeight: 400, overflowY: "auto" }}>
+            {movimientos.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: C.faint, fontSize: 13 }}>Aún no hay movimientos</div>
+            ) : movimientos.map((m) => {
+              const cfg = tipoCfg[m.tipo] || tipoCfg.venta;
+              return (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>{cfg.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{m.descripcion}</div>
+                    <div style={{ fontSize: 11, color: C.faint }}>{m.hora} · {m.metodo}</div>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: Number(m.monto) < 0 ? C.danger : C.success }}>
+                    {Number(m.monto) < 0 ? "-" : "+"}€{Math.abs(Number(m.monto)).toFixed(2)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+ 
+        {/* Resumen */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.text }}>📊 Resumen del turno</h3>
+            <div style={{ fontSize: 12, color: C.faint, marginBottom: 12 }}>👤 {sesion.cajero} · desde {sesion.hora_apertura}</div>
+            {[
+              { label: "Fondo inicial", val: fondoIni, color: C.muted },
+              { label: "Ventas efectivo", val: totalEfectivo, color: C.success },
+              { label: "Ventas tarjeta", val: totalTarjeta, color: C.accent },
+              { label: "Gastos", val: -totalGastos, color: C.danger },
+            ].map((r) => (
+              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ fontSize: 13, color: C.muted }}>{r.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: r.color }}>{r.val < 0 ? "-" : ""}€{Math.abs(r.val).toFixed(2)}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 0" }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>Total en caja</span>
+              <span style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>€{totalEsperado.toFixed(2)}</span>
+            </div>
+          </div>
+          <Btn full variant="danger" onClick={() => { setEfectivoContado(totalEsperado.toFixed(2)); setModalCierre(true); }} icon="🔒">Cerrar caja del día</Btn>
+        </div>
+      </div>
+ 
+      {/* Modal gasto */}
+      {modalGasto && (
+        <Modal title="📤 Registrar gasto" subtitle="Salida de efectivo de caja" onClose={() => setModalGasto(false)}>
+          <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 6, fontWeight: 700 }}>Descripción</label>
+          <input value={formGasto.descripcion} onChange={(e) => setFormGasto({ ...formGasto, descripcion: e.target.value })} placeholder="Ej: Compra de leche"
+            style={{ width: "100%", background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 14 }} />
+          <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 6, fontWeight: 700 }}>Importe (€)</label>
+          <input type="number" value={formGasto.monto} onChange={(e) => setFormGasto({ ...formGasto, monto: e.target.value })} placeholder="0.00"
+            style={{ width: "100%", background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", color: C.text, fontSize: 20, fontWeight: 800, outline: "none", boxSizing: "border-box", marginBottom: 20 }} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="secondary" full onClick={() => setModalGasto(false)}>Cancelar</Btn>
+            <Btn variant="danger" full onClick={registrarGasto} disabled={!formGasto.descripcion || !formGasto.monto} icon="📤">Registrar</Btn>
+          </div>
+        </Modal>
+      )}
+ 
+      {/* Modal cierre */}
+      {modalCierre && (
+        <Modal title="🔒 Cerrar caja" subtitle="Verifica los totales antes de cerrar" onClose={() => setModalCierre(false)}>
+          <div style={{ background: C.soft, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            {[
+              { label: "Fondo inicial", val: fondoIni },
+              { label: "Ventas efectivo", val: totalEfectivo },
+              { label: "Gastos", val: -totalGastos },
+            ].map((r) => (
+              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
+                <span style={{ fontSize: 13, color: C.muted }}>{r.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{r.val < 0 ? "-" : ""}€{Math.abs(r.val).toFixed(2)}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, borderTop: `1px solid ${C.border}`, marginTop: 6 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>Esperado en caja</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: C.accent }}>€{totalEsperado.toFixed(2)}</span>
+            </div>
+          </div>
+          <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 6, fontWeight: 700 }}>Efectivo contado físicamente (€)</label>
+          <input type="number" value={efectivoContado} onChange={(e) => setEfectivoContado(e.target.value)}
+            style={{ width: "100%", background: C.soft, border: `2px solid ${Math.abs(+efectivoContado - totalEsperado) > 1 ? C.danger : C.success}`, borderRadius: 12, padding: "12px 14px", color: C.text, fontSize: 22, fontWeight: 800, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+          {efectivoContado && (
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 16, color: Math.abs(+efectivoContado - totalEsperado) < 1 ? C.success : (+efectivoContado - totalEsperado) > 0 ? C.success : C.danger }}>
+              {Math.abs(+efectivoContado - totalEsperado) < 0.01 ? "✅ Cuadre perfecto" : (+efectivoContado - totalEsperado) > 0 ? `✅ Sobrante: €${(+efectivoContado - totalEsperado).toFixed(2)}` : `⚠️ Faltante: €${Math.abs(+efectivoContado - totalEsperado).toFixed(2)}`}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="secondary" full onClick={() => setModalCierre(false)}>Cancelar</Btn>
+            <Btn variant="danger" full onClick={cerrarCaja} icon="🔒">Cerrar caja</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -944,7 +1196,7 @@ export default function App() {
       case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
       case "reservas": return <ModuloPendiente titulo="Reservas" icon="📅" descripcion="Agenda de reservas por día. Disponible en el módulo gastro-reservas.jsx" />;
       case "mermas": return <ModuloPendiente titulo="Control de Mermas" icon="🗑️" descripcion="Registro de pérdidas y desperdicio. Disponible en el módulo gastro-mermas.jsx" />;
-      case "caja": return <ModuloPendiente titulo="Control de Caja" icon="💶" descripcion="Apertura y cierre de caja con arqueo. Disponible en el módulo gastro-caja.jsx" />;
+      case "caja": return <ModuloCaja usuario={usuario} toast={mostrarToast} />;
       case "reportes": return <ModuloPendiente titulo="Reportes" icon="📊" descripcion="Análisis avanzado exportable a PDF. Disponible en el módulo gastro-reportes.jsx" />;
       case "ia": return <ModuloPendiente titulo="Asistente IA" icon="🤖" descripcion="El chat de IA requiere un backend para proteger la clave de API. Disponible en gastro-ia.jsx para conectar más adelante." />;
       default: return null;
