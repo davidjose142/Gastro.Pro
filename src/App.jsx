@@ -707,6 +707,216 @@ const ModuloMesas = ({ usuario, toast }) => {
     </div>
   );
 };
+
+const ModuloTickets = ({ usuario, toast }) => {
+  const [vista, setVista] = useState("nueva"); // nueva | historial
+  const [platos, setPlatos] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [carrito, setCarrito] = useState([]);
+  const [mesaActual, setMesaActual] = useState("1");
+  const [catActiva, setCatActiva] = useState("Todos");
+  const [modalCobro, setModalCobro] = useState(false);
+  const [ticketSel, setTicketSel] = useState(null);
+ 
+  const cargar = async () => {
+    const [p, t] = await Promise.all([
+      db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
+      db("tickets", { filtro: "?order=created_at.desc&limit=50" }),
+    ]);
+    setPlatos(p || []);
+    setTickets(t || []);
+  };
+  useEffect(() => { cargar(); }, []);
+ 
+  const cats = ["Todos", ...new Set(platos.map((p) => p.categoria))];
+  const platosFiltrados = catActiva === "Todos" ? platos : platos.filter((p) => p.categoria === catActiva);
+ 
+  const añadir = (plato) => {
+    const existe = carrito.find((i) => i.id === plato.id);
+    if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
+    else setCarrito([...carrito, { ...plato, qty: 1 }]);
+  };
+  const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
+ 
+  const totalCarrito = carrito.reduce((s, i) => s + Number(i.precio) * i.qty, 0);
+ 
+  const generarTicket = async (metodo) => {
+    const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
+    const nuevo = {
+      codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
+      metodo, items, total: totalCarrito,
+      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+    };
+    await db("tickets", { metodo: "POST", cuerpo: nuevo });
+    setCarrito([]);
+    setModalCobro(false);
+    toast(`✅ Ticket ${codigo} generado · €${totalCarrito.toFixed(2)}`);
+    cargar();
+    setVista("historial");
+  };
+ 
+  const metodoPago = {
+    efectivo: { icon: "💵", label: "Efectivo", color: C.gold },
+    tarjeta: { icon: "💳", label: "Tarjeta", color: C.accent },
+    bizum: { icon: "📱", label: "Bizum", color: C.success },
+  };
+ 
+  const calcTotal = (items) => (items || []).reduce((s, i) => s + i.precio * i.qty, 0);
+ 
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>🧾 TPV / Tickets</h2>
+        <div style={{ display: "flex", gap: 6, background: C.soft, borderRadius: 12, padding: 4 }}>
+          {[{ id: "nueva", label: "🧾 Nueva venta" }, { id: "historial", label: "📋 Historial" }].map((v) => (
+            <button key={v.id} onClick={() => setVista(v.id)} style={{
+              background: vista === v.id ? C.accent : "transparent", color: vista === v.id ? "#fff" : C.muted,
+              border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>{v.label}</button>
+          ))}
+        </div>
+      </div>
+ 
+      {vista === "nueva" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18 }}>
+          {/* Carta */}
+          <div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "12px 16px", marginBottom: 14, display: "flex", gap: 14, alignItems: "center", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div>
+                <label style={{ fontSize: 11, color: C.faint, fontWeight: 700 }}>Mesa</label>
+                <input type="number" value={mesaActual} onChange={(e) => setMesaActual(e.target.value)} min="1"
+                  style={{ display: "block", width: 70, background: C.soft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 10px", color: C.text, fontSize: 16, fontWeight: 800, outline: "none", marginTop: 3 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, color: C.faint, fontWeight: 700 }}>Mesero</label>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginTop: 5 }}>👤 {usuario.nombre}</div>
+              </div>
+            </div>
+ 
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              {cats.map((c) => (
+                <button key={c} onClick={() => setCatActiva(c)} style={{
+                  background: catActiva === c ? C.accent : C.card, color: catActiva === c ? "#fff" : C.muted,
+                  border: `1px solid ${catActiva === c ? C.accent : C.border}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>{c}</button>
+              ))}
+            </div>
+ 
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+              {platosFiltrados.map((plato) => {
+                const enCarrito = carrito.find((i) => i.id === plato.id);
+                return (
+                  <button key={plato.id} onClick={() => añadir(plato)} style={{
+                    background: enCarrito ? C.accentLight : C.card, border: `2px solid ${enCarrito ? C.accent : C.border}`,
+                    borderRadius: 14, padding: "14px 10px", cursor: "pointer", textAlign: "center", position: "relative",
+                    boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+                  }}>
+                    {enCarrito && <div style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: "50%", background: C.accent, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{enCarrito.qty}</div>}
+                    <div style={{ fontSize: 26, marginBottom: 6 }}>{plato.imagen}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.3, marginBottom: 4 }}>{plato.nombre}</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.accent }}>€{Number(plato.precio).toFixed(2)}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+ 
+          {/* Carrito */}
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", boxShadow: "0 2px 8px rgba(15,23,42,0.05)", height: "fit-content", maxHeight: "calc(100vh - 200px)" }}>
+            <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${C.border}` }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: C.text }}>🧾 Mesa {mesaActual}</h3>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{carrito.length} productos</div>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", minHeight: 100 }}>
+              {carrito.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "30px 20px", color: C.faint }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>🍽️</div>
+                  <div style={{ fontSize: 13 }}>Selecciona productos</div>
+                </div>
+              ) : carrito.map((item) => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 20 }}>{item.imagen}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{item.nombre}</div>
+                    <div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>€{(Number(item.precio) * item.qty).toFixed(2)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button onClick={() => quitar(item.id)} style={{ width: 24, height: 24, borderRadius: 6, background: C.soft, border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 14 }}>−</button>
+                    <span style={{ fontSize: 13, fontWeight: 800, minWidth: 16, textAlign: "center" }}>{item.qty}</span>
+                    <button onClick={() => añadir(item)} style={{ width: 24, height: 24, borderRadius: 6, background: C.accent, border: "none", color: "#fff", cursor: "pointer", fontSize: 14 }}>+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {carrito.length > 0 && (
+              <div style={{ padding: "16px 18px", borderTop: `2px solid ${C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: C.text }}>TOTAL</span>
+                  <span style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>€{totalCarrito.toFixed(2)}</span>
+                </div>
+                <Btn full variant="success" onClick={() => setModalCobro(true)} icon="💳">Cobrar</Btn>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* HISTORIAL */
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {tickets.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 48, color: C.faint }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🧾</div>
+              <div style={{ fontSize: 14 }}>Aún no hay tickets. Genera el primero en "Nueva venta".</div>
+            </div>
+          ) : tickets.map((t) => {
+            const mp = metodoPago[t.metodo] || metodoPago.efectivo;
+            return (
+              <div key={t.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 12, background: C.accentLight, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🧾</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontWeight: 800, color: C.text, fontSize: 14 }}>{t.codigo}</span>
+                    <span style={{ fontSize: 11, background: C.successLight, color: C.success, border: `1px solid ${C.success}30`, borderRadius: 5, padding: "1px 7px", fontWeight: 700 }}>✓ Pagado</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Mesa {t.mesa} · {t.hora} · {t.mesero}</div>
+                  <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>{(t.items || []).map((i) => `${i.nombre} x${i.qty}`).join(", ")}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.accent }}>€{Number(t.total).toFixed(2)}</div>
+                  <div style={{ fontSize: 11, color: mp.color, fontWeight: 600 }}>{mp.icon} {mp.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+ 
+      {/* Modal cobro */}
+      {modalCobro && (
+        <Modal title={`💳 Cobrar mesa ${mesaActual}`} subtitle="Selecciona el método de pago" onClose={() => setModalCobro(false)}>
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Total a cobrar</div>
+            <div style={{ fontSize: 44, fontWeight: 900, color: C.text }}>€{totalCarrito.toFixed(2)}</div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            {Object.entries(metodoPago).map(([key, m]) => (
+              <button key={key} onClick={() => generarTicket(key)} style={{
+                flex: 1, padding: "16px 8px", borderRadius: 12, cursor: "pointer",
+                background: m.color + "12", border: `2px solid ${m.color}`, color: m.color,
+                fontWeight: 800, fontSize: 13, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ fontSize: 24 }}>{m.icon}</span>{m.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Btn variant="secondary" full onClick={() => setModalCobro(false)}>Cancelar</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -730,7 +940,7 @@ export default function App() {
       case "usuarios": return <ModuloUsuarios usuario={usuario} toast={mostrarToast} />;
       case "config": return <ModuloConfig usuario={usuario} toast={mostrarToast} />;
       case "mesas": return <ModuloMesas usuario={usuario} toast={mostrarToast} />;
-      case "tickets": return <ModuloPendiente titulo="TPV / Tickets" icon="🧾" descripcion="Terminal de venta con generación e impresión de tickets. Disponible en el módulo gastro-tickets.jsx" />;
+      case "tickets": return <ModuloTickets usuario={usuario} toast={mostrarToast} />;
       case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
       case "reservas": return <ModuloPendiente titulo="Reservas" icon="📅" descripcion="Agenda de reservas por día. Disponible en el módulo gastro-reservas.jsx" />;
       case "mermas": return <ModuloPendiente titulo="Control de Mermas" icon="🗑️" descripcion="Registro de pérdidas y desperdicio. Disponible en el módulo gastro-mermas.jsx" />;
