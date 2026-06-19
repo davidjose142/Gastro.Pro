@@ -532,6 +532,181 @@ const ModuloPendiente = ({ titulo, icon, descripcion }) => (
 // ═══════════════════════════════════════════════════════════════════════════════
 //  APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const ModuloMesas = ({ usuario, toast }) => {
+  const [mesas, setMesas] = useState(null);
+  const [zonaActiva, setZonaActiva] = useState("Todas");
+  const [seleccionada, setSeleccionada] = useState(null);
+  const [carrito, setCarrito] = useState([]);
+  const [platos, setPlatos] = useState([]);
+ 
+  const cargar = async () => {
+    const [m, p] = await Promise.all([
+      db("mesas", { filtro: "?order=numero" }),
+      db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
+    ]);
+    setMesas(m || []);
+    setPlatos(p || []);
+  };
+  useEffect(() => { cargar(); }, []);
+ 
+  const estadoCfg = {
+    libre: { color: C.success, bg: C.successLight, label: "Libre" },
+    ocupada: { color: C.danger, bg: C.dangerLight, label: "Ocupada" },
+    reservada: { color: C.warning, bg: C.warningLight, label: "Reservada" },
+  };
+ 
+  const cambiarEstado = async (mesa, estado) => {
+    await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { estado } });
+    setSeleccionada((prev) => prev?.id === mesa.id ? { ...prev, estado } : prev);
+    cargar();
+    toast(`Mesa ${mesa.numero} · ${estadoCfg[estado].label}`, estadoCfg[estado].color);
+  };
+ 
+  const guardarPedido = async (mesa) => {
+    const total = carrito.reduce((s, i) => s + i.precio * i.qty, 0);
+    await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { estado: "ocupada", total } });
+    setCarrito([]);
+    setSeleccionada(null);
+    cargar();
+    toast(`✅ Pedido enviado · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
+  };
+ 
+  const añadir = (plato) => {
+    const existe = carrito.find((i) => i.id === plato.id);
+    if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
+    else setCarrito([...carrito, { ...plato, qty: 1 }]);
+  };
+  const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
+ 
+  if (!mesas) return <Cargando />;
+ 
+  const zonas = ["Todas", ...new Set(mesas.map((m) => m.zona))];
+  const mesasFiltradas = zonaActiva === "Todas" ? mesas : mesas.filter((m) => m.zona === zonaActiva);
+  const stats = {
+    libres: mesas.filter((m) => m.estado === "libre").length,
+    ocupadas: mesas.filter((m) => m.estado === "ocupada").length,
+    reservadas: mesas.filter((m) => m.estado === "reservada").length,
+  };
+  const totalCarrito = carrito.reduce((s, i) => s + i.precio * i.qty, 0);
+ 
+  return (
+    <div style={{ display: "flex", gap: 20, height: "calc(100vh - 130px)" }}>
+      {/* Zona principal */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Stats + zonas */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+          {[
+            { label: "Libres", val: stats.libres, color: C.success },
+            { label: "Ocupadas", val: stats.ocupadas, color: C.danger },
+            { label: "Reservadas", val: stats.reservadas, color: C.warning },
+          ].map((s) => (
+            <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 16px", display: "flex", gap: 8, alignItems: "center", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: s.color }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{s.val} {s.label}</span>
+            </div>
+          ))}
+          <div style={{ flex: 1 }} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {zonas.map((z) => (
+              <button key={z} onClick={() => setZonaActiva(z)} style={{
+                background: zonaActiva === z ? C.accent : C.card, color: zonaActiva === z ? "#fff" : C.muted,
+                border: `1px solid ${zonaActiva === z ? C.accent : C.border}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}>{z}</button>
+            ))}
+          </div>
+        </div>
+ 
+        {/* Grid de mesas */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 14 }}>
+            {mesasFiltradas.map((mesa) => {
+              const cfg = estadoCfg[mesa.estado];
+              const sel = seleccionada?.id === mesa.id;
+              return (
+                <div key={mesa.id} onClick={() => { setSeleccionada(sel ? null : mesa); setCarrito([]); }}
+                  style={{
+                    background: sel ? C.accentLight : C.card,
+                    border: `2px solid ${sel ? C.accent : cfg.color + "50"}`,
+                    borderRadius: 16, padding: "18px 10px", cursor: "pointer", textAlign: "center",
+                    boxShadow: sel ? `0 0 0 3px ${C.accent}15` : "0 1px 4px rgba(15,23,42,0.06)",
+                    transition: "all .15s",
+                  }}>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: sel ? C.accent : C.text, marginBottom: 6 }}>{mesa.numero}</div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: cfg.color, fontWeight: 700, background: cfg.bg, borderRadius: 8, padding: "2px 8px" }}>
+                    <span style={{ fontSize: 7 }}>●</span> {cfg.label}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.faint, marginTop: 6 }}>{mesa.zona} · {mesa.capacidad}p</div>
+                  {mesa.estado === "ocupada" && mesa.total > 0 && <div style={{ fontSize: 13, fontWeight: 800, color: C.accent, marginTop: 4 }}>€{Number(mesa.total).toFixed(2)}</div>}
+                  {mesa.estado === "reservada" && mesa.reserva && <div style={{ fontSize: 9, color: C.warning, marginTop: 4 }}>{mesa.reserva}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+ 
+      {/* Panel lateral de pedido */}
+      {seleccionada && (
+        <div style={{ width: 300, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", flexShrink: 0, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+          <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.text }}>Mesa {seleccionada.numero}</h3>
+              <button onClick={() => setSeleccionada(null)} style={{ background: "none", border: "none", color: C.faint, cursor: "pointer", fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{seleccionada.zona} · {seleccionada.capacidad} personas</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+              {Object.entries(estadoCfg).map(([e, cfg]) => (
+                <button key={e} onClick={() => cambiarEstado(seleccionada, e)} style={{
+                  flex: 1, padding: "6px 4px", fontSize: 10, fontWeight: 700, borderRadius: 8, cursor: "pointer",
+                  background: seleccionada.estado === e ? cfg.color : "transparent",
+                  color: seleccionada.estado === e ? "#fff" : cfg.color,
+                  border: `1px solid ${cfg.color}`,
+                }}>{cfg.label}</button>
+              ))}
+            </div>
+          </div>
+ 
+          <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Añadir al pedido</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {platos.map((p) => (
+                <button key={p.id} onClick={() => añadir(p)} style={{ background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 6px", cursor: "pointer", textAlign: "center" }}>
+                  <div style={{ fontSize: 22 }}>{p.imagen}</div>
+                  <div style={{ fontSize: 10, color: C.text, fontWeight: 600, marginTop: 3, lineHeight: 1.2 }}>{p.nombre}</div>
+                  <div style={{ fontSize: 12, color: C.accent, fontWeight: 800, marginTop: 2 }}>€{Number(p.precio).toFixed(2)}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+ 
+          {carrito.length > 0 && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.accentLight }}>
+              {carrito.map((i) => (
+                <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: C.text }}>{i.imagen} {i.nombre}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button onClick={() => quitar(i.id)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.border, cursor: "pointer", fontSize: 12 }}>−</button>
+                    <span style={{ fontSize: 12, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{i.qty}</span>
+                    <button onClick={() => añadir(i)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 12 }}>+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+ 
+          <div style={{ padding: "14px 16px", borderTop: `2px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Total nuevo</span>
+              <span style={{ fontSize: 18, fontWeight: 900, color: C.accent }}>€{totalCarrito.toFixed(2)}</span>
+            </div>
+            <Btn full variant="success" disabled={carrito.length === 0} onClick={() => guardarPedido(seleccionada)} icon="🍳">Enviar a cocina</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -554,7 +729,7 @@ export default function App() {
       case "platos": return <ModuloPlatos usuario={usuario} toast={mostrarToast} />;
       case "usuarios": return <ModuloUsuarios usuario={usuario} toast={mostrarToast} />;
       case "config": return <ModuloConfig usuario={usuario} toast={mostrarToast} />;
-      case "mesas": return <ModuloPendiente titulo="Mesas del salón" icon="🪑" descripcion="Plano interactivo del salón con gestión de pedidos por mesa. Disponible en el módulo gastro-mesas.jsx" />;
+      case "mesas": return <ModuloMesas usuario={usuario} toast={mostrarToast} />;
       case "tickets": return <ModuloPendiente titulo="TPV / Tickets" icon="🧾" descripcion="Terminal de venta con generación e impresión de tickets. Disponible en el módulo gastro-tickets.jsx" />;
       case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
       case "reservas": return <ModuloPendiente titulo="Reservas" icon="📅" descripcion="Agenda de reservas por día. Disponible en el módulo gastro-reservas.jsx" />;
