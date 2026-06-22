@@ -917,9 +917,8 @@ const ModuloTickets = ({ usuario, toast }) => {
     </div>
   );
 };
-
 const ModuloCaja = ({ usuario, toast }) => {
-  const [sesion, setSesion] = useState(undefined); // undefined=cargando, null=sin sesión, obj=abierta
+  const [sesion, setSesion] = useState(undefined);
   const [movimientos, setMovimientos] = useState([]);
   const [modalApertura, setModalApertura] = useState(false);
   const [modalCierre, setModalCierre] = useState(false);
@@ -927,15 +926,15 @@ const ModuloCaja = ({ usuario, toast }) => {
   const [fondoInicial, setFondoInicial] = useState("200");
   const [efectivoContado, setEfectivoContado] = useState("");
   const [formGasto, setFormGasto] = useState({ descripcion: "", monto: "" });
+  const [procesando, setProcesando] = useState(false);
  
   const cargar = async () => {
-    // Buscar sesión abierta del día
-    const sesiones = await db("caja_sesiones", { filtro: `?estado=eq.abierta&order=created_at.desc&limit=1` });
-    if (sesiones?.length > 0) {
+    const sesiones = await db("caja_sesiones", { filtro: `?estado=eq.abierta&order=created_at.desc` });
+    if (Array.isArray(sesiones) && sesiones.length > 0) {
       const s = sesiones[0];
       setSesion(s);
       const movs = await db("caja_movimientos", { filtro: `?sesion_id=eq.${s.id}&order=created_at.desc` });
-      setMovimientos(movs || []);
+      setMovimientos(Array.isArray(movs) ? movs : []);
     } else {
       setSesion(null);
       setMovimientos([]);
@@ -943,7 +942,6 @@ const ModuloCaja = ({ usuario, toast }) => {
   };
   useEffect(() => { cargar(); }, []);
  
-  // Cálculos
   const ventas = movimientos.filter((m) => m.tipo === "venta");
   const gastos = movimientos.filter((m) => m.tipo === "gasto");
   const totalEfectivo = ventas.filter((m) => m.metodo === "efectivo").reduce((s, m) => s + Number(m.monto), 0);
@@ -952,33 +950,42 @@ const ModuloCaja = ({ usuario, toast }) => {
   const totalVentas = totalEfectivo + totalTarjeta;
   const fondoIni = sesion ? Number(sesion.fondo_inicial) : 0;
   const totalEsperado = fondoIni + totalEfectivo - totalGastos;
-  const ticketMedio = ventas.length > 0 ? totalVentas / ventas.length : 0;
  
   const abrirCaja = async () => {
-    const nueva = {
-      estado: "abierta",
-      fondo_inicial: +fondoInicial,
-      cajero: usuario.nombre,
-      hora_apertura: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-    };
-    const res = await db("caja_sesiones", { metodo: "POST", cuerpo: nueva });
-    const sesionCreada = res?.[0];
+    setProcesando(true);
+    const horaApertura = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    const res = await db("caja_sesiones", { metodo: "POST", cuerpo: {
+      estado: "abierta", fondo_inicial: +fondoInicial, cajero: usuario.nombre, hora_apertura: horaApertura,
+    }});
+ 
+    // Si Supabase devolvió la sesión creada, la usamos directo (sin esperar recarga)
+    const sesionCreada = Array.isArray(res) && res.length > 0 ? res[0] : null;
+ 
     if (sesionCreada) {
       await db("caja_movimientos", { metodo: "POST", cuerpo: {
         sesion_id: sesionCreada.id, tipo: "apertura",
-        descripcion: `Apertura de caja — ${usuario.nombre}`, monto: +fondoInicial, metodo: "efectivo",
-        hora: nueva.hora_apertura,
+        descripcion: `Apertura de caja — ${usuario.nombre}`, monto: +fondoInicial, metodo: "efectivo", hora: horaApertura,
       }});
+      // Actualizamos el estado directamente
+      setSesion(sesionCreada);
+      setMovimientos([{ id: "tmp", tipo: "apertura", descripcion: `Apertura de caja — ${usuario.nombre}`, monto: +fondoInicial, metodo: "efectivo", hora: horaApertura }]);
+      setModalApertura(false);
+      toast("🔓 Caja abierta correctamente");
+      // Recargamos para sincronizar con la base de datos
+      setTimeout(() => cargar(), 500);
+    } else {
+      // Si no devolvió datos, recargamos para buscarla
+      setModalApertura(false);
+      toast("🔓 Caja abierta");
+      await cargar();
     }
-    setModalApertura(false);
-    toast("🔓 Caja abierta correctamente");
-    cargar();
+    setProcesando(false);
   };
  
   const registrarGasto = async () => {
     await db("caja_movimientos", { metodo: "POST", cuerpo: {
-      sesion_id: sesion.id, tipo: "gasto",
-      descripcion: formGasto.descripcion, monto: -Math.abs(+formGasto.monto), metodo: "efectivo",
+      sesion_id: sesion.id, tipo: "gasto", descripcion: formGasto.descripcion,
+      monto: -Math.abs(+formGasto.monto), metodo: "efectivo",
       hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
     }});
     setFormGasto({ descripcion: "", monto: "" });
@@ -990,14 +997,14 @@ const ModuloCaja = ({ usuario, toast }) => {
   const cerrarCaja = async () => {
     const diferencia = +efectivoContado - totalEsperado;
     await db("caja_sesiones", { metodo: "PATCH", filtro: `?id=eq.${sesion.id}`, cuerpo: {
-      estado: "cerrada",
-      hora_cierre: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-      efectivo_contado: +efectivoContado,
-      diferencia,
+      estado: "cerrada", hora_cierre: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+      efectivo_contado: +efectivoContado, diferencia,
     }});
     setModalCierre(false);
     setEfectivoContado("");
     toast(`🔒 Caja cerrada · ${diferencia >= 0 ? "Sobrante" : "Faltante"} €${Math.abs(diferencia).toFixed(2)}`, Math.abs(diferencia) < 1 ? C.success : C.warning);
+    setSesion(null);
+    setMovimientos([]);
     cargar();
   };
  
@@ -1009,7 +1016,6 @@ const ModuloCaja = ({ usuario, toast }) => {
  
   if (sesion === undefined) return <Cargando />;
  
-  // ─── CAJA CERRADA: pantalla de apertura ───
   if (!sesion) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
@@ -1030,7 +1036,7 @@ const ModuloCaja = ({ usuario, toast }) => {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <Btn variant="secondary" full onClick={() => setModalApertura(false)}>Cancelar</Btn>
-              <Btn variant="success" full onClick={abrirCaja} icon="🔓">Abrir caja</Btn>
+              <Btn variant="success" full onClick={abrirCaja} disabled={procesando} icon="🔓">{procesando ? "Abriendo..." : "Abrir caja"}</Btn>
             </div>
           </Modal>
         )}
@@ -1038,7 +1044,6 @@ const ModuloCaja = ({ usuario, toast }) => {
     );
   }
  
-  // ─── CAJA ABIERTA ───
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -1055,7 +1060,6 @@ const ModuloCaja = ({ usuario, toast }) => {
         </div>
       </div>
  
-      {/* KPIs */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
         <KPICard icon="💶" label="Total ventas" value={`€${totalVentas.toFixed(2)}`} color={C.success} sub={`${ventas.length} ventas`} />
         <KPICard icon="💵" label="Efectivo" value={`€${totalEfectivo.toFixed(2)}`} color={C.gold} />
@@ -1065,7 +1069,6 @@ const ModuloCaja = ({ usuario, toast }) => {
       </div>
  
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18 }}>
-        {/* Movimientos */}
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
           <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: C.text }}>📋 Movimientos del turno</h3>
@@ -1092,7 +1095,6 @@ const ModuloCaja = ({ usuario, toast }) => {
           </div>
         </div>
  
-        {/* Resumen */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
             <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.text }}>📊 Resumen del turno</h3>
@@ -1117,7 +1119,6 @@ const ModuloCaja = ({ usuario, toast }) => {
         </div>
       </div>
  
-      {/* Modal gasto */}
       {modalGasto && (
         <Modal title="📤 Registrar gasto" subtitle="Salida de efectivo de caja" onClose={() => setModalGasto(false)}>
           <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 6, fontWeight: 700 }}>Descripción</label>
@@ -1133,7 +1134,6 @@ const ModuloCaja = ({ usuario, toast }) => {
         </Modal>
       )}
  
-      {/* Modal cierre */}
       {modalCierre && (
         <Modal title="🔒 Cerrar caja" subtitle="Verifica los totales antes de cerrar" onClose={() => setModalCierre(false)}>
           <div style={{ background: C.soft, borderRadius: 12, padding: 16, marginBottom: 16 }}>
