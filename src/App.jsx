@@ -739,7 +739,7 @@ const ModuloTickets = ({ usuario, toast }) => {
       if (!mesaActual) return;
       const [mesasDB, comandasDB] = await Promise.all([
         db("mesas", { filtro: `?numero=eq.${+mesaActual}` }),
-        db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)&order=created_at.desc&limit=1` }),
+        db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=neq.entregado&order=created_at.desc&limit=1` }),
       ]);
       const mesa = Array.isArray(mesasDB) && mesasDB.length > 0 ? mesasDB[0] : null;
       setMesaInfo(mesa);
@@ -779,10 +779,10 @@ const ModuloTickets = ({ usuario, toast }) => {
       codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
       metodo, items, total: totalCarrito, hora,
     }});
+// 2. Elimina comandas activas de la mesa
+await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
 
-    // 2. Marcar comanda existente como entregada
-await db("comandas", { metodo: "PATCH", filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)`, cuerpo: { estado: "entregado" } });
-        // 3. Libera la mesa
+            // 3. Libera la mesa
     const mesasDB = await db("mesas", { filtro: `?numero=eq.${+mesaActual}` });
     if (Array.isArray(mesasDB) && mesasDB.length > 0) {
       await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesasDB[0].id}`, cuerpo: { estado: "libre", total: 0 } });
