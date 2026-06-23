@@ -777,21 +777,6 @@ const generarTicket = async (metodo) => {
     cargar();
     setVista("historial");
   };
-    const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-    const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
-    const nuevo = {
-      codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
-      metodo, items, total: totalCarrito,
-      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-    };
-    await db("tickets", { metodo: "POST", cuerpo: nuevo });
-    setCarrito([]);
-    setModalCobro(false);
-    toast(`✅ Ticket ${codigo} generado · €${totalCarrito.toFixed(2)}`);
-    cargar();
-    setVista("historial");
-  };
- 
   const metodoPago = {
     efectivo: { icon: "💵", label: "Efectivo", color: C.gold },
     tarjeta: { icon: "💳", label: "Tarjeta", color: C.accent },
