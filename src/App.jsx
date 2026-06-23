@@ -562,16 +562,22 @@ const ModuloMesas = ({ usuario, toast }) => {
     cargar();
     toast(`Mesa ${mesa.numero} · ${estadoCfg[estado].label}`, estadoCfg[estado].color);
   };
- 
   const guardarPedido = async (mesa) => {
     const total = carrito.reduce((s, i) => s + i.precio * i.qty, 0);
+    // Actualiza la mesa
     await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { estado: "ocupada", total } });
+    // Crea la comanda para la cocina
+    const codigo = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
+    const itemsComanda = carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false }));
+    await db("comandas", { metodo: "POST", cuerpo: {
+      codigo, mesa: mesa.numero, zona: mesa.zona, mesero: usuario.nombre,
+      estado: "nuevo", items: itemsComanda,
+    }});
     setCarrito([]);
     setSeleccionada(null);
     cargar();
-    toast(`✅ Pedido enviado · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
+    toast(`✅ Pedido enviado a cocina · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
   };
- 
   const añadir = (plato) => {
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
