@@ -163,7 +163,6 @@ const Login = ({ onLogin }) => {
   return (
     <div style={{ minHeight: "100vh", background: `linear-gradient(135deg, #1a1a14 0%, #2d2a1e 50%, #1a1a14 100%)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 16 }}>
       <div style={{ background: C.card, borderRadius: 24, padding: "48px 40px", width: "100%", maxWidth: 400, boxShadow: "0 30px 80px rgba(0,0,0,0.3)", textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 18, margin: "0 auto 20px", 
 <div style={{ margin: "0 auto 16px", textAlign: "center" }}>
   <svg viewBox="300 200 800 500" width="120" height="70" xmlns="http://www.w3.org/2000/svg">
     <g transform="translate(0,768) scale(0.1,-0.1)" fill="url(#lg)" stroke="none">
@@ -1838,7 +1837,7 @@ const ModuloMermas = ({ usuario, toast }) => {
     </div>
   );
 };
- const ModuloCocina = ({ usuario, toast }) => {
+ const ModuloCocina = ({ usuario, toast }) => {}
   const [comandas, setComandas] = useState(null);
   const [filtro, setFiltro] = useState("activos");
 
