@@ -1371,6 +1371,194 @@ const ModuloReportes = ({ usuario, toast }) => {
     </div>
   );
 };
+const ModuloReservas = ({ usuario, toast }) => {
+  const [reservas, setReservas] = useState(null);
+  const [fechaActiva, setFechaActiva] = useState(new Date().toISOString().split("T")[0]);
+  const [modal, setModal] = useState(null);
+ 
+  const cargar = async () => {
+    const r = await db("reservas", { filtro: "?order=hora" });
+    setReservas(Array.isArray(r) ? r : []);
+  };
+  useEffect(() => { cargar(); }, []);
+ 
+  const FRANJAS = ["13:00", "13:30", "14:00", "14:30", "15:00", "20:00", "20:30", "21:00", "21:30", "22:00"];
+ 
+  const estadoCfg = {
+    confirmada: { color: C.success, bg: C.successLight, label: "Confirmada", icon: "✓" },
+    pendiente: { color: C.warning, bg: C.warningLight, label: "Pendiente", icon: "⏳" },
+    cancelada: { color: C.danger, bg: C.dangerLight, label: "Cancelada", icon: "✕" },
+    sentada: { color: C.accent, bg: C.accentLight, label: "En mesa", icon: "🪑" },
+  };
+ 
+  const fechaStr = (offset = 0) => {
+    const d = new Date(); d.setDate(d.getDate() + offset);
+    return d.toISOString().split("T")[0];
+  };
+ 
+  const guardar = async (form) => {
+    const cuerpo = {
+      nombre: form.nombre, personas: +form.personas, fecha: form.fecha, hora: form.hora,
+      telefono: form.telefono, mesa: +form.mesa || null, estado: form.estado, nota: form.nota || "",
+    };
+    if (form.id) await db("reservas", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
+    else await db("reservas", { metodo: "POST", cuerpo });
+    toast(form.id ? "✅ Reserva actualizada" : `✅ Reserva de ${form.nombre} creada`);
+    setModal(null);
+    cargar();
+  };
+ 
+  const cambiarEstado = async (r, estado) => {
+    await db("reservas", { metodo: "PATCH", filtro: `?id=eq.${r.id}`, cuerpo: { estado } });
+    toast(`Reserva ${estadoCfg[estado].label.toLowerCase()}`, estadoCfg[estado].color);
+    cargar();
+  };
+ 
+  if (!reservas) return <Cargando />;
+ 
+  const fechas = Array.from({ length: 7 }, (_, i) => fechaStr(i));
+  const reservasDelDia = reservas.filter((r) => r.fecha === fechaActiva && r.estado !== "cancelada");
+  const reservasOrdenadas = [...reservasDelDia].sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+  const totalPersonas = reservasDelDia.reduce((s, r) => s + r.personas, 0);
+  const confirmadas = reservasDelDia.filter((r) => r.estado === "confirmada").length;
+  const pendientes = reservasDelDia.filter((r) => r.estado === "pendiente").length;
+  const esFechaHoy = fechaActiva === fechaStr(0);
+ 
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>📅 Reservas</h2>
+        <Btn onClick={() => setModal({ nombre: "", personas: 2, fecha: fechaActiva, hora: "20:00", telefono: "", mesa: "", estado: "confirmada", nota: "" })} icon="+">Nueva reserva</Btn>
+      </div>
+ 
+      {/* Selector fechas */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, overflowX: "auto", paddingBottom: 4 }}>
+        {fechas.map((f, i) => {
+          const activa = fechaActiva === f;
+          const count = reservas.filter((r) => r.fecha === f && r.estado !== "cancelada").length;
+          const d = new Date(f + "T00:00:00");
+          return (
+            <button key={f} onClick={() => setFechaActiva(f)} style={{
+              flexShrink: 0, minWidth: 80, padding: "12px 16px", borderRadius: 14, cursor: "pointer",
+              background: activa ? C.accent : C.card, border: `1px solid ${activa ? C.accent : C.border}`,
+              color: activa ? "#fff" : C.text, textAlign: "center", boxShadow: activa ? `0 4px 12px ${C.accent}40` : "none",
+            }}>
+              <div style={{ fontSize: 11, color: activa ? "rgba(255,255,255,0.8)" : C.muted, fontWeight: 600, textTransform: "uppercase" }}>
+                {i === 0 ? "Hoy" : i === 1 ? "Mañana" : d.toLocaleDateString("es-ES", { weekday: "short" })}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, margin: "2px 0" }}>{d.getDate()}</div>
+              <div style={{ fontSize: 10, color: activa ? "rgba(255,255,255,0.8)" : C.faint }}>{d.toLocaleDateString("es-ES", { month: "short" })}</div>
+              {count > 0 && <div style={{ marginTop: 4, fontSize: 10, fontWeight: 800, color: activa ? "#fff" : C.accent, background: activa ? "rgba(255,255,255,0.2)" : C.accentLight, borderRadius: 10, padding: "1px 6px", display: "inline-block" }}>{count}</div>}
+            </button>
+          );
+        })}
+      </div>
+ 
+      {/* KPIs */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
+        <KPICard icon="📅" label="Reservas del día" value={reservasDelDia.length} color={C.accent} />
+        <KPICard icon="👥" label="Comensales" value={totalPersonas} color={C.purple} />
+        <KPICard icon="✓" label="Confirmadas" value={confirmadas} color={C.success} />
+        <KPICard icon="⏳" label="Pendientes" value={pendientes} color={C.warning} />
+      </div>
+ 
+      {/* Timeline */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+        <h3 style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 800, color: C.text }}>
+          📋 Agenda · {new Date(fechaActiva + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+        </h3>
+ 
+        {reservasOrdenadas.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 48, color: C.faint }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>📭</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.muted }}>No hay reservas para este día</div>
+            <div style={{ marginTop: 14 }}>
+              <Btn small variant="ghost" onClick={() => setModal({ nombre: "", personas: 2, fecha: fechaActiva, hora: "20:00", telefono: "", mesa: "", estado: "confirmada", nota: "" })} icon="+">Crear la primera</Btn>
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", left: 54, top: 12, bottom: 12, width: 2, background: C.border }} />
+            {reservasOrdenadas.map((r) => {
+              const cfg = estadoCfg[r.estado] || estadoCfg.confirmada;
+              return (
+                <div key={r.id} style={{ display: "flex", gap: 16, marginBottom: 16, position: "relative" }}>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: "right", paddingTop: 14 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{r.hora}</div>
+                  </div>
+                  <div style={{ width: 14, height: 14, borderRadius: "50%", background: cfg.color, border: `3px solid ${C.card}`, boxShadow: `0 0 0 2px ${cfg.color}`, flexShrink: 0, marginTop: 16, zIndex: 1 }} />
+                  <div style={{ flex: 1, background: C.soft, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", borderLeft: `3px solid ${cfg.color}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 800, color: C.text, fontSize: 15 }}>{r.nombre}</span>
+                          <span style={{ fontSize: 11, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30`, borderRadius: 20, padding: "2px 10px", fontWeight: 700 }}>{cfg.icon} {cfg.label}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, color: C.muted }}>👥 {r.personas} personas</span>
+                          {r.mesa && <span style={{ fontSize: 12, color: C.muted }}>🪑 Mesa {r.mesa}</span>}
+                          <span style={{ fontSize: 12, color: C.muted }}>📞 {r.telefono}</span>
+                        </div>
+                        {r.nota && <div style={{ fontSize: 12, color: C.gold, marginTop: 6, background: C.goldLight, borderRadius: 8, padding: "5px 10px", display: "inline-block" }}>📝 {r.nota}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {r.estado === "pendiente" && <Btn small variant="success" onClick={() => cambiarEstado(r, "confirmada")} icon="✓">Confirmar</Btn>}
+                        {r.estado === "confirmada" && esFechaHoy && <Btn small variant="primary" onClick={() => cambiarEstado(r, "sentada")} icon="🪑">Sentar</Btn>}
+                        <Btn small variant="ghost" onClick={() => setModal({ ...r, mesa: r.mesa || "" })}>Editar</Btn>
+                        <Btn small variant="secondary" onClick={() => cambiarEstado(r, "cancelada")}>✕</Btn>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+ 
+      {/* Modal */}
+      {modal && (
+        <Modal title={modal.id ? "Editar reserva" : "📅 Nueva reserva"} onClose={() => setModal(null)}>
+          <Input label="Nombre del cliente" value={modal.nombre} onChange={(e) => setModal({ ...modal, nombre: e.target.value })} placeholder="Ej: Familia García" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 5, fontWeight: 600 }}>Personas</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "5px 10px" }}>
+                <button onClick={() => setModal({ ...modal, personas: Math.max(1, modal.personas - 1) })} style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: C.border, cursor: "pointer", fontSize: 16 }}>−</button>
+                <span style={{ flex: 1, textAlign: "center", fontSize: 18, fontWeight: 800, color: C.text }}>{modal.personas}</span>
+                <button onClick={() => setModal({ ...modal, personas: modal.personas + 1 })} style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 16 }}>+</button>
+              </div>
+            </div>
+            <Input label="Mesa asignada" type="number" value={modal.mesa} onChange={(e) => setModal({ ...modal, mesa: e.target.value })} placeholder="Nº" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Input label="Fecha" type="date" value={modal.fecha} onChange={(e) => setModal({ ...modal, fecha: e.target.value })} />
+            <Select label="Hora" value={modal.hora} onChange={(e) => setModal({ ...modal, hora: e.target.value })}>{FRANJAS.map((f) => <option key={f}>{f}</option>)}</Select>
+          </div>
+          <Input label="Teléfono" value={modal.telefono} onChange={(e) => setModal({ ...modal, telefono: e.target.value })} placeholder="+34 600 000 000" />
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 5, fontWeight: 600 }}>Estado</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["confirmada", "pendiente"].map((e) => (
+                <button key={e} onClick={() => setModal({ ...modal, estado: e })} style={{
+                  flex: 1, padding: "9px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700,
+                  background: modal.estado === e ? estadoCfg[e].color : C.soft,
+                  color: modal.estado === e ? "#fff" : C.muted,
+                  border: `1.5px solid ${modal.estado === e ? estadoCfg[e].color : C.border}`,
+                }}>{estadoCfg[e].icon} {estadoCfg[e].label}</button>
+              ))}
+            </div>
+          </div>
+          <Input label="Nota (opcional)" value={modal.nota} onChange={(e) => setModal({ ...modal, nota: e.target.value })} placeholder="Cumpleaños, alergias..." />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
+            <Btn onClick={() => guardar(modal)} disabled={!modal.nombre?.trim() || !modal.telefono?.trim()} icon="📅">{modal.id ? "Guardar" : "Crear reserva"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -1396,7 +1584,7 @@ export default function App() {
       case "mesas": return <ModuloMesas usuario={usuario} toast={mostrarToast} />;
       case "tickets": return <ModuloTickets usuario={usuario} toast={mostrarToast} />;
       case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
-      case "reservas": return <ModuloPendiente titulo="Reservas" icon="📅" descripcion="Agenda de reservas por día. Disponible en el módulo gastro-reservas.jsx" />;
+      case "reservas": return <ModuloReservas usuario={usuario} toast={mostrarToast} />;
       case "mermas": return <ModuloPendiente titulo="Control de Mermas" icon="🗑️" descripcion="Registro de pérdidas y desperdicio. Disponible en el módulo gastro-mermas.jsx" />;
       case "caja": return <ModuloCaja usuario={usuario} toast={mostrarToast} />;
      case "reportes": return <ModuloReportes usuario={usuario} toast={mostrarToast} />;
