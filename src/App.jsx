@@ -1765,6 +1765,166 @@ const ModuloMermas = ({ usuario, toast }) => {
     </div>
   );
 };
+ const ModuloCocina = ({ usuario, toast }) => {
+  const [comandas, setComandas] = useState(null);
+  const [filtro, setFiltro] = useState("activos");
+ 
+  const cargar = async () => {
+    const c = await db("comandas", { filtro: "?order=created_at" });
+    setComandas(Array.isArray(c) ? c : []);
+  };
+  useEffect(() => {
+    cargar();
+    const intervalo = setInterval(cargar, 15000); // refresca cada 15s
+    return () => clearInterval(intervalo);
+  }, []);
+ 
+  const mins = (creado) => Math.floor((Date.now() - new Date(creado).getTime()) / 60000);
+ 
+  const urgencia = (m, estado) => {
+    if (estado === "listo") return { color: C.success, bg: C.successLight, label: "LISTO" };
+    if (m >= 15) return { color: C.danger, bg: C.dangerLight, label: "URGENTE" };
+    if (m >= 8) return { color: C.warning, bg: C.warningLight, label: "EN PREPARACIÓN" };
+    return { color: C.accent, bg: C.accentLight, label: "NUEVO" };
+  };
+ 
+  const toggleItem = async (comanda, idx) => {
+    const items = comanda.items.map((it, i) => i === idx ? { ...it, listo: !it.listo } : it);
+    const estado = comanda.estado === "nuevo" ? "preparando" : comanda.estado;
+    await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comanda.id}`, cuerpo: { items, estado } });
+    cargar();
+  };
+ 
+  const marcarListo = async (comanda) => {
+    await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comanda.id}`, cuerpo: { estado: "listo" } });
+    toast(`🔔 Comanda ${comanda.codigo} lista`, C.success);
+    cargar();
+  };
+ 
+  const entregar = async (comanda) => {
+    await db("comandas", { metodo: "DELETE", filtro: `?id=eq.${comanda.id}` });
+    toast(`✅ ${comanda.codigo} entregado`, C.success);
+    cargar();
+  };
+ 
+  if (!comandas) return <Cargando />;
+ 
+  const activos = comandas.filter((c) => c.estado !== "listo");
+  const listos = comandas.filter((c) => c.estado === "listo");
+  const urgentes = activos.filter((c) => mins(c.created_at) >= 15);
+  const mostrar = filtro === "activos" ? activos : filtro === "listos" ? listos : comandas;
+ 
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>🍳 Cocina (KDS)</h2>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { label: "Activos", val: activos.length, color: C.accent },
+              { label: "Urgentes", val: urgentes.length, color: C.danger },
+              { label: "Listos", val: listos.length, color: C.success },
+            ].map((s) => (
+              <div key={s.label} style={{ background: C.card, border: `1px solid ${s.color}40`, borderRadius: 10, padding: "5px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 16, fontWeight: 900, color: s.color }}>{s.val}</span>
+                <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, background: C.soft, borderRadius: 12, padding: 4 }}>
+          {[{ id: "activos", label: "🔥 Activos" }, { id: "listos", label: "✓ Listos" }, { id: "todos", label: "Todos" }].map((f) => (
+            <button key={f.id} onClick={() => setFiltro(f.id)} style={{
+              background: filtro === f.id ? C.accent : "transparent", color: filtro === f.id ? "#fff" : C.muted,
+              border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>{f.label}</button>
+          ))}
+        </div>
+      </div>
+ 
+      {mostrar.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "80px 20px", color: C.faint, background: C.card, borderRadius: 16, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.muted }}>{filtro === "activos" ? "No hay comandas pendientes" : "No hay comandas aquí"}</div>
+          <div style={{ fontSize: 14, marginTop: 6 }}>Las comandas nuevas aparecen automáticamente</div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+          {[...mostrar].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map((comanda) => {
+            const m = mins(comanda.created_at);
+            const urg = urgencia(m, comanda.estado);
+            const items = comanda.items || [];
+            const listosCount = items.filter((i) => i.listo).length;
+            const todosListos = listosCount === items.length && items.length > 0;
+ 
+            return (
+              <div key={comanda.id} style={{
+                background: C.card, border: `2px solid ${urg.color}`, borderRadius: 16, overflow: "hidden",
+                display: "flex", flexDirection: "column",
+                boxShadow: m >= 15 && comanda.estado !== "listo" ? `0 0 20px ${C.danger}40` : "0 2px 8px rgba(15,23,42,0.06)",
+              }}>
+                <div style={{ background: urg.bg, padding: "12px 16px", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 20, fontWeight: 900, color: C.text }}>Mesa {comanda.mesa}</span>
+                        <span style={{ fontSize: 12, color: C.muted }}>#{comanda.codigo}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{comanda.zona} · {comanda.mesero}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 26, fontWeight: 900, color: urg.color, lineHeight: 1 }}>{m}'</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: urg.color }}>{urg.label}</div>
+                    </div>
+                  </div>
+                </div>
+ 
+                <div style={{ padding: "8px 0", flex: 1 }}>
+                  {items.map((item, i) => (
+                    <div key={i} onClick={() => comanda.estado !== "listo" && toggleItem(comanda, i)} style={{
+                      display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 16px",
+                      cursor: comanda.estado !== "listo" ? "pointer" : "default", opacity: item.listo ? 0.5 : 1,
+                      borderBottom: i < items.length - 1 ? `1px solid ${C.border}` : "none",
+                    }}>
+                      <div style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, marginTop: 1, border: `2px solid ${item.listo ? C.success : C.faint}`, background: item.listo ? C.success : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#fff", fontWeight: 800 }}>{item.listo && "✓"}</div>
+                      <div style={{ minWidth: 32, height: 26, borderRadius: 7, flexShrink: 0, background: C.soft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 900, color: C.text }}>{item.qty}×</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, textDecoration: item.listo ? "line-through" : "none" }}>{item.nombre}</div>
+                        {item.nota && <div style={{ fontSize: 13, color: C.warning, fontWeight: 600, marginTop: 2 }}>⚠️ {item.nota}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+ 
+                <div style={{ padding: "0 16px 8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 4 }}>
+                    <span>{listosCount}/{items.length} preparados</span>
+                    <span>{items.length > 0 ? Math.round((listosCount / items.length) * 100) : 0}%</span>
+                  </div>
+                  <div style={{ background: C.soft, borderRadius: 4, height: 5 }}>
+                    <div style={{ height: "100%", borderRadius: 4, background: todosListos ? C.success : urg.color, width: `${items.length > 0 ? (listosCount / items.length) * 100 : 0}%` }} />
+                  </div>
+                </div>
+ 
+                <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
+                  {comanda.estado === "listo" ? (
+                    <button onClick={() => entregar(comanda)} style={{ width: "100%", background: C.success, color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>✓ ENTREGADO — quitar</button>
+                  ) : (
+                    <button onClick={() => marcarListo(comanda)} disabled={!todosListos} style={{
+                      width: "100%", background: todosListos ? C.success : C.soft, color: todosListos ? "#fff" : C.faint,
+                      border: `1px solid ${todosListos ? C.success : C.border}`, borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 900,
+                      cursor: todosListos ? "pointer" : "not-allowed",
+                    }}>{todosListos ? "🔔 MARCAR LISTO" : `Faltan ${items.length - listosCount} items`}</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
  
 export default function App() {
   const [usuario, setUsuario] = useState(null);
@@ -1790,7 +1950,7 @@ export default function App() {
       case "config": return <ModuloConfig usuario={usuario} toast={mostrarToast} />;
       case "mesas": return <ModuloMesas usuario={usuario} toast={mostrarToast} />;
       case "tickets": return <ModuloTickets usuario={usuario} toast={mostrarToast} />;
-      case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
+     case "cocina": return <ModuloCocina usuario={usuario} toast={mostrarToast} />;
       case "reservas": return <ModuloReservas usuario={usuario} toast={mostrarToast} />;
       case "mermas": return <ModuloMermas usuario={usuario} toast={mostrarToast} />;
       case "caja": return <ModuloCaja usuario={usuario} toast={mostrarToast} />;
