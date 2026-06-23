@@ -1559,6 +1559,213 @@ const ModuloReservas = ({ usuario, toast }) => {
     </div>
   );
 };
+const ModuloMermas = ({ usuario, toast }) => {
+  const [mermas, setMermas] = useState(null);
+  const [ingredientes, setIngredientes] = useState([]);
+  const [platos, setPlatos] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [filtroMotivo, setFiltroMotivo] = useState("todos");
+  const [form, setForm] = useState(null);
+ 
+  const MOTIVOS = [
+    { id: "caducado", label: "Caducado / vencido", icon: "📅", color: C.danger },
+    { id: "rotura", label: "Rotura / daño", icon: "💥", color: C.warning },
+    { id: "mal_estado", label: "Mal estado", icon: "🦠", color: C.danger },
+    { id: "error_cocina", label: "Error de cocina", icon: "🔥", color: C.warning },
+    { id: "sobrante", label: "Sobrante no usado", icon: "🗑️", color: C.muted },
+    { id: "devolucion", label: "Devolución cliente", icon: "↩", color: C.info },
+    { id: "robo", label: "Pérdida / robo", icon: "❓", color: C.danger },
+    { id: "muestra", label: "Degustación", icon: "🎁", color: C.success },
+  ];
+  const motivoCfg = (id) => MOTIVOS.find((m) => m.id === id) || MOTIVOS[0];
+ 
+  const cargar = async () => {
+    const [m, inv, p] = await Promise.all([
+      db("mermas", { filtro: "?order=created_at.desc" }),
+      db("inventario", { filtro: "?order=nombre" }),
+      db("platos", { filtro: "?order=nombre" }),
+    ]);
+    setMermas(Array.isArray(m) ? m : []);
+    // Precio estimado por unidad: inventario no tiene precio, usamos un estimado bajo; platos sí tienen precio
+    setIngredientes((inv || []).map((i) => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, precioUnidad: 2.0 })));
+    setPlatos((p || []).map((p) => ({ id: p.id, nombre: p.nombre, unidad: "und", precioUnidad: Number(p.precio) })));
+  };
+  useEffect(() => { cargar(); }, []);
+ 
+  const abrirModal = () => {
+    setForm({ tipo: "ingrediente", itemNombre: "", itemPrecio: 0, itemUnidad: "kg", cantidad: "", motivo: "", responsable: usuario.nombre, nota: "" });
+    setModal(true);
+  };
+ 
+  const lista = form?.tipo === "ingrediente" ? ingredientes : platos;
+  const costoEstimado = form && form.itemPrecio && form.cantidad ? form.itemPrecio * +form.cantidad : 0;
+ 
+  const guardar = async () => {
+    if (!form.itemNombre || !form.cantidad || !form.motivo) return;
+    await db("mermas", { metodo: "POST", cuerpo: {
+      item: form.itemNombre, tipo: form.tipo, cantidad: +form.cantidad, unidad: form.itemUnidad,
+      motivo: form.motivo, costo: costoEstimado, responsable: form.responsable, nota: form.nota,
+      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+    }});
+    toast(`🗑️ Merma registrada · -€${costoEstimado.toFixed(2)}`, C.danger);
+    setModal(false);
+    cargar();
+  };
+ 
+  if (!mermas) return <Cargando />;
+ 
+  const mermasFiltradas = filtroMotivo === "todos" ? mermas : mermas.filter((m) => m.motivo === filtroMotivo);
+  const totalPerdido = mermas.reduce((s, m) => s + Number(m.costo), 0);
+  const hoy = new Date().toISOString().split("T")[0];
+  const perdidoHoy = mermas.filter((m) => m.fecha === hoy).reduce((s, m) => s + Number(m.costo), 0);
+ 
+  const porMotivo = MOTIVOS.map((mot) => {
+    const items = mermas.filter((m) => m.motivo === mot.id);
+    return { ...mot, total: items.reduce((s, m) => s + Number(m.costo), 0), count: items.length };
+  }).filter((m) => m.count > 0).sort((a, b) => b.total - a.total);
+  const maxMotivo = Math.max(...porMotivo.map((m) => m.total), 1);
+ 
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>🗑️ Control de Mermas</h2>
+        <Btn variant="danger" onClick={abrirModal} icon="+">Registrar merma</Btn>
+      </div>
+ 
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
+        <KPICard icon="📉" label="Pérdida hoy" value={`€${perdidoHoy.toFixed(2)}`} color={C.danger} sub={`${mermas.filter((m) => m.fecha === hoy).length} registros`} />
+        <KPICard icon="💸" label="Pérdida acumulada" value={`€${totalPerdido.toFixed(2)}`} color={C.warning} />
+        <KPICard icon="📊" label="Promedio por merma" value={`€${mermas.length > 0 ? (totalPerdido / mermas.length).toFixed(2) : "0.00"}`} color={C.info} />
+        <KPICard icon="🎯" label="Mayor causa" value={porMotivo[0]?.icon || "—"} color={C.accent} sub={porMotivo[0]?.label || "Sin datos"} />
+      </div>
+ 
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20 }}>
+        <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <button onClick={() => setFiltroMotivo("todos")} style={{ background: filtroMotivo === "todos" ? C.accent : C.card, color: filtroMotivo === "todos" ? "#fff" : C.muted, border: `1px solid ${filtroMotivo === "todos" ? C.accent : C.border}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Todos</button>
+            {porMotivo.map((m) => (
+              <button key={m.id} onClick={() => setFiltroMotivo(m.id)} style={{ background: filtroMotivo === m.id ? m.color : C.card, color: filtroMotivo === m.id ? "#fff" : C.muted, border: `1px solid ${filtroMotivo === m.id ? m.color : C.border}`, borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{m.icon} {m.label}</button>
+            ))}
+          </div>
+ 
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {mermasFiltradas.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 48, color: C.faint, background: C.card, borderRadius: 16, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>✨</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>No hay mermas registradas</div>
+              </div>
+            ) : mermasFiltradas.map((m) => {
+              const mot = motivoCfg(m.motivo);
+              return (
+                <div key={m.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: mot.color + "12", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{mot.icon}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{m.item}</span>
+                      <span style={{ fontSize: 11, background: m.tipo === "plato" ? C.accentLight : C.goldLight, color: m.tipo === "plato" ? C.accent : C.gold, border: `1px solid ${m.tipo === "plato" ? C.accent : C.gold}25`, borderRadius: 5, padding: "1px 7px", fontWeight: 600 }}>{m.tipo === "plato" ? "Plato" : "Ingrediente"}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{m.cantidad} {m.unidad} · {mot.label} · {m.responsable}</div>
+                    {m.nota && <div style={{ fontSize: 11, color: C.faint, marginTop: 2, fontStyle: "italic" }}>"{m.nota}"</div>}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: C.danger }}>-€{Number(m.costo).toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: C.faint }}>{m.fecha} {m.hora}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+ 
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+            <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>📊 Pérdidas por motivo</h3>
+            {porMotivo.length === 0 ? <div style={{ color: C.faint, fontSize: 13 }}>Sin datos aún</div> : porMotivo.map((m) => (
+              <div key={m.id} style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{m.icon} {m.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: m.color }}>€{m.total.toFixed(2)}</span>
+                </div>
+                <div style={{ background: C.soft, borderRadius: 6, height: 8 }}>
+                  <div style={{ height: "100%", borderRadius: 6, background: m.color, width: `${(m.total / maxMotivo) * 100}%`, transition: "width .5s" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+ 
+          {totalPerdido > 0 && (
+            <div style={{ background: C.accentLight, border: `1px solid ${C.accent}25`, borderRadius: 16, padding: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.accent, marginBottom: 6 }}>💡 Consejo</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+                Reducir las mermas un 20% recuperaría <strong style={{ color: C.text }}>€{(totalPerdido * 0.2).toFixed(2)}</strong>. Revisa los productos perecederos y ajusta las compras según la demanda real.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+ 
+      {/* Modal registrar */}
+      {modal && form && (
+        <Modal title="🗑️ Registrar merma" subtitle="Registra una pérdida o desperdicio" onClose={() => setModal(false)}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            {[{ id: "ingrediente", label: "🥚 Ingrediente" }, { id: "plato", label: "🍽️ Plato" }].map((t) => (
+              <button key={t.id} onClick={() => setForm({ ...form, tipo: t.id, itemNombre: "", itemPrecio: 0 })} style={{
+                flex: 1, padding: "10px", borderRadius: 12, cursor: "pointer", fontSize: 13, fontWeight: 700,
+                background: form.tipo === t.id ? C.accentLight : C.soft,
+                border: `2px solid ${form.tipo === t.id ? C.accent : C.border}`,
+                color: form.tipo === t.id ? C.accent : C.muted,
+              }}>{t.label}</button>
+            ))}
+          </div>
+ 
+          <Select label="¿Qué se mermó?" value={form.itemNombre} onChange={(e) => {
+            const it = lista.find((x) => x.nombre === e.target.value);
+            setForm({ ...form, itemNombre: e.target.value, itemPrecio: it?.precioUnidad || 0, itemUnidad: it?.unidad || "kg" });
+          }}>
+            <option value="">Selecciona...</option>
+            {lista.map((i) => <option key={i.id} value={i.nombre}>{i.nombre}</option>)}
+          </Select>
+ 
+          <Input label={`Cantidad (${form.itemUnidad})`} type="number" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} placeholder="0.00" />
+ 
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 12, color: C.muted, marginBottom: 8, fontWeight: 600 }}>Motivo</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {MOTIVOS.map((m) => (
+                <button key={m.id} onClick={() => setForm({ ...form, motivo: m.id })} style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, cursor: "pointer",
+                  fontSize: 12, fontWeight: 600, textAlign: "left",
+                  background: form.motivo === m.id ? m.color + "15" : C.soft,
+                  border: `1.5px solid ${form.motivo === m.id ? m.color : C.border}`,
+                  color: form.motivo === m.id ? m.color : C.muted,
+                }}><span style={{ fontSize: 16 }}>{m.icon}</span> {m.label}</button>
+              ))}
+            </div>
+          </div>
+ 
+          <Select label="Responsable" value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })}>
+            {["David Ramírez", "María González", "Carlos Pérez", "Ana Torres"].map((n) => <option key={n}>{n}</option>)}
+          </Select>
+ 
+          <Input label="Nota (opcional)" value={form.nota} onChange={(e) => setForm({ ...form, nota: e.target.value })} placeholder="Detalles..." />
+ 
+          {costoEstimado > 0 && (
+            <div style={{ background: C.dangerLight, border: `1px solid ${C.danger}30`, borderRadius: 12, padding: 16, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 12, color: C.muted }}>Pérdida estimada</div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: C.danger }}>-€{costoEstimado.toFixed(2)}</div>
+            </div>
+          )}
+ 
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn variant="secondary" onClick={() => setModal(false)}>Cancelar</Btn>
+            <Btn variant="danger" onClick={guardar} disabled={!form.itemNombre || !form.cantidad || !form.motivo} icon="🗑️">Registrar</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+ 
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -1585,7 +1792,7 @@ export default function App() {
       case "tickets": return <ModuloTickets usuario={usuario} toast={mostrarToast} />;
       case "cocina": return <ModuloPendiente titulo="Pantalla de Cocina" icon="🍳" descripcion="Vista KDS para cocina con temporizadores. Disponible en el módulo gastro-cocina.jsx" />;
       case "reservas": return <ModuloReservas usuario={usuario} toast={mostrarToast} />;
-      case "mermas": return <ModuloPendiente titulo="Control de Mermas" icon="🗑️" descripcion="Registro de pérdidas y desperdicio. Disponible en el módulo gastro-mermas.jsx" />;
+      case "mermas": return <ModuloMermas usuario={usuario} toast={mostrarToast} />;
       case "caja": return <ModuloCaja usuario={usuario} toast={mostrarToast} />;
      case "reportes": return <ModuloReportes usuario={usuario} toast={mostrarToast} />;
       case "ia": return <ModuloPendiente titulo="Asistente IA" icon="🤖" descripcion="El chat de IA requiere un backend para proteger la clave de API. Disponible en gastro-ia.jsx para conectar más adelante." />;
