@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  GASTROPRO — SISTEMA COMPLETO DE GESTIÓN HOTELERA
+//  CUCHARAL — SISTEMA COMPLETO DE GESTIÓN HOTELERA
 //  Conectado a Supabase · Login real · Roles y permisos
 // ═══════════════════════════════════════════════════════════════════════════════
 
