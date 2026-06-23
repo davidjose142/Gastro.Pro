@@ -781,11 +781,8 @@ const ModuloTickets = ({ usuario, toast }) => {
     }});
 
     // 2. Marcar comanda existente como entregada
-    const comandaActiva = await db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)&limit=1` });
-    if (Array.isArray(comandaActiva) && comandaActiva.length > 0) {
-      await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comandaActiva[0].id}`, cuerpo: { estado: "entregado" } });
-    }
-    // 3. Libera la mesa
+await db("comandas", { metodo: "PATCH", filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)`, cuerpo: { estado: "entregado" } });
+        // 3. Libera la mesa
     const mesasDB = await db("mesas", { filtro: `?numero=eq.${+mesaActual}` });
     if (Array.isArray(mesasDB) && mesasDB.length > 0) {
       await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesasDB[0].id}`, cuerpo: { estado: "libre", total: 0 } });
