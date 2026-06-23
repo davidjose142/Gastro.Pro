@@ -32,15 +32,14 @@ const db = async (tabla, opciones = {}) => {
 
 // ─── PALETA ───────────────────────────────────────────────────────────────────
 const C = {
-  bg: "#f0f4fa", surface: "#ffffff", card: "#ffffff", soft: "#f1f5f9", border: "#e2e8f0",
-  sidebar: "#0f172a", sidebarBorder: "rgba(255,255,255,0.06)", sidebarText: "rgba(255,255,255,0.55)",
-  accent: "#2563eb", accentLight: "#eff6ff", accentDim: "#1e3a8a",
-  gold: "#f59e0b", goldLight: "#fffbeb", success: "#10b981", successLight: "#ecfdf5",
+  bg: "#f0ede8", surface: "#ffffff", card: "#ffffff", soft: "#f5f2ec", border: "#e8e0d0",
+  sidebar: "#1a1a14", sidebarBorder: "rgba(201,168,76,0.2)", sidebarText: "rgba(255,255,255,0.5)",
+  accent: "#c9a84c", accentLight: "#fdf8ec", accentDim: "#8a6b2a",
+  gold: "#c9a84c", goldLight: "#fdf8ec", success: "#10b981", successLight: "#ecfdf5",
   danger: "#ef4444", dangerLight: "#fef2f2", warning: "#f97316", warningLight: "#fff7ed",
   info: "#0ea5e9", purple: "#8b5cf6",
-  text: "#0f172a", muted: "#64748b", faint: "#94a3b8",
+  text: "#1a1a14", muted: "#6b6560", faint: "#9a948e",
 };
-
 // ─── ROLES ────────────────────────────────────────────────────────────────────
 const ROLES = {
   administrador: { label: "Administrador", color: C.accent, icono: "👑" },
@@ -162,11 +161,24 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: `linear-gradient(135deg, ${C.accentDim} 0%, ${C.accent} 100%)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 16 }}>
+    <div style={{ minHeight: "100vh", background: `linear-gradient(135deg, #1a1a14 0%, #2d2a1e 50%, #1a1a14 100%)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 16 }}>
       <div style={{ background: C.card, borderRadius: 24, padding: "48px 40px", width: "100%", maxWidth: 400, boxShadow: "0 30px 80px rgba(0,0,0,0.3)", textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 18, margin: "0 auto 20px", background: `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>👨‍🍳</div>
-        <h1 style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 900, color: C.text }}>GastroPRO</h1>
-        <p style={{ margin: "0 0 32px", color: C.muted, fontSize: 13 }}>Sistema de gestión hotelera</p>
+        <div style={{ width: 64, height: 64, borderRadius: 18, margin: "0 auto 20px", 
+<div style={{ margin: "0 auto 16px", textAlign: "center" }}>
+  <svg viewBox="300 200 800 500" width="120" height="70" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(0,768) scale(0.1,-0.1)" fill="url(#lg)" stroke="none">
+      <defs>
+        <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#f0d080"/>
+          <stop offset="100%" stopColor="#c9a84c"/>
+        </linearGradient>
+      </defs>
+      <path d="M7610 5841 c106 -31 242 -99 335 -169 90 -67 165 -143 165 -168 0 -22 -210 -243 -237 -250 -18 -5 -39 9 -99 65 -127 118 -257 171 -424 171 -266 0 -471 -137 -595 -398 -72 -150 -123 -192 -237 -192 -84 1 -128 22 -230 112 -205 181 -290 219 -488 219 -276 -1 -573 -151 -652 -329 -28 -62 -27 -145 1 -200 60 -118 220 -228 418 -289 75 -22 107 -26 218 -27 210 -1 283 30 527 225 163 130 228 174 360 244 290 153 632 224 1175 241z"/>
+    </g>
+  </svg>
+</div>
+<h1 style={{ margin: "0 0 4px", fontSize: 28, fontWeight: 900, color: C.text, letterSpacing: 3 }}>CUCHARAL</h1>
+<p style={{ margin: "0 0 32px", color: C.muted, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>Software para restaurantes</p>
         <Input label="Tu correo electrónico" type="email" placeholder="correo@restaurante.es" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
         {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
         <Btn full onClick={entrar} disabled={cargando}>{cargando ? "Verificando..." : "Entrar al sistema"}</Btn>
@@ -2026,8 +2038,20 @@ export default function App() {
       {/* Sidebar */}
       <div style={{ width: collapsed ? 64 : 230, background: C.sidebar, display: "flex", flexDirection: "column", flexShrink: 0, transition: "width .25s", overflow: "hidden" }}>
         <div style={{ padding: collapsed ? "20px 0" : "20px 18px", borderBottom: `1px solid ${C.sidebarBorder}`, display: "flex", alignItems: "center", gap: 10, justifyContent: collapsed ? "center" : "flex-start" }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.accentDim}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>👨‍🍳</div>
-          {!collapsed && <div><div style={{ fontWeight: 800, fontSize: 14, color: "#fff" }}>GastroPRO</div><div style={{ fontSize: 10, color: C.sidebarText }}>v2.0 · Pro</div></div>}
+         <div style={{ width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <svg viewBox="200 300 1000 400" width="36" height="36" xmlns="http://www.w3.org/2000/svg">
+    <g transform="translate(0,768) scale(0.1,-0.1)" fill="url(#cg)" stroke="none">
+      <defs>
+        <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#f0d080"/>
+          <stop offset="100%" stopColor="#c9a84c"/>
+        </linearGradient>
+      </defs>
+      <path d="M7610 5841 c106 -31 242 -99 335 -169 90 -67 165 -143 165 -168 0 -22 -210 -243 -237 -250 -18 -5 -39 9 -99 65 -127 118 -257 171 -424 171 -266 0 -471 -137 -595 -398 -72 -150 -123 -192 -237 -192 -84 1 -128 22 -230 112 -205 181 -290 219 -488 219 -276 -1 -573 -151 -652 -329 -28 -62 -27 -145 1 -200 60 -118 220 -228 418 -289 75 -22 107 -26 218 -27 210 -1 283 30 527 225 163 130 228 174 360 244 290 153 632 224 1175 241z"/>
+    </g>
+  </svg>
+</div>
+{!collapsed && <div><div style={{ fontWeight: 800, fontSize: 14, color: "#c9a84c", letterSpacing: 2 }}>CUCHARAL</div><div style={{ fontSize: 10, color: C.sidebarText }}>Software para restaurantes</div></div>}
         </div>
 
         <div style={{ flex: 1, padding: collapsed ? "12px 8px" : "12px 10px", overflowY: "auto" }}>
