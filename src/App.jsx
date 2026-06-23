@@ -746,7 +746,37 @@ const ModuloTickets = ({ usuario, toast }) => {
  
   const totalCarrito = carrito.reduce((s, i) => s + Number(i.precio) * i.qty, 0);
  
-  const generarTicket = async (metodo) => {
+const generarTicket = async (metodo) => {
+    const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
+
+    // 1. Genera el ticket
+    await db("tickets", { metodo: "POST", cuerpo: {
+      codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
+      metodo, items, total: totalCarrito,
+      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+    }});
+
+    // 2. Manda comanda a cocina
+    const codigoComanda = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
+    const itemsComanda = carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false }));
+    await db("comandas", { metodo: "POST", cuerpo: {
+      codigo: codigoComanda, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
+      estado: "nuevo", items: itemsComanda,
+    }});
+
+    // 3. Libera la mesa (la marca libre y resetea su total)
+    const mesasDB = await db("mesas", { filtro: `?numero=eq.${+mesaActual}` });
+    if (Array.isArray(mesasDB) && mesasDB.length > 0) {
+      await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesasDB[0].id}`, cuerpo: { estado: "libre", total: 0 } });
+    }
+
+    setCarrito([]);
+    setModalCobro(false);
+    toast(`✅ Ticket ${codigo} · Cocina avisada · Mesa ${mesaActual} liberada`);
+    cargar();
+    setVista("historial");
+  };
     const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
     const nuevo = {
