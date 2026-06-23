@@ -739,7 +739,7 @@ const ModuloTickets = ({ usuario, toast }) => {
       if (!mesaActual) return;
       const [mesasDB, comandasDB] = await Promise.all([
         db("mesas", { filtro: `?numero=eq.${+mesaActual}` }),
-        db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=neq.entregado&order=created_at.desc&limit=1` }),
+        db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)&order=created_at.desc&limit=1` }),
       ]);
       const mesa = Array.isArray(mesasDB) && mesasDB.length > 0 ? mesasDB[0] : null;
       setMesaInfo(mesa);
@@ -780,13 +780,11 @@ const ModuloTickets = ({ usuario, toast }) => {
       metodo, items, total: totalCarrito, hora,
     }});
 
-    // 2. Manda comanda a cocina
-    const codigoComanda = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
-    await db("comandas", { metodo: "POST", cuerpo: {
-      codigo: codigoComanda, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
-      estado: "nuevo", items: carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false })),
-    }});
-
+    // 2. Marcar comanda existente como entregada
+    const comandaActiva = await db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=in.(nuevo,preparando,listo)&limit=1` });
+    if (Array.isArray(comandaActiva) && comandaActiva.length > 0) {
+      await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comandaActiva[0].id}`, cuerpo: { estado: "entregado" } });
+    }
     // 3. Libera la mesa
     const mesasDB = await db("mesas", { filtro: `?numero=eq.${+mesaActual}` });
     if (Array.isArray(mesasDB) && mesasDB.length > 0) {
@@ -1833,11 +1831,9 @@ const ModuloMermas = ({ usuario, toast }) => {
  const ModuloCocina = ({ usuario, toast }) => {
   const [comandas, setComandas] = useState(null);
   const [filtro, setFiltro] = useState("activos");
- 
-  const cargar = async () => {
-    const c = await db("comandas", { filtro: "?order=created_at" });
-    setComandas(Array.isArray(c) ? c : []);
-  };
+
+ const cargar = async () => {
+    const c = await db("comandas", { filtro: "?estado=neq.entregado&order=created_at" });
   useEffect(() => {
     cargar();
     const intervalo = setInterval(cargar, 15000); // refresca cada 15s
@@ -1866,8 +1862,8 @@ const ModuloMermas = ({ usuario, toast }) => {
     cargar();
   };
  
-  const entregar = async (comanda) => {
-    await db("comandas", { metodo: "DELETE", filtro: `?id=eq.${comanda.id}` });
+const entregar = async (comanda) => {
+    await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comanda.id}`, cuerpo: { estado: "entregado" } });
     toast(`✅ ${comanda.codigo} entregado`, C.success);
     cargar();
   };
