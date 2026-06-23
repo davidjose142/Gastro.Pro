@@ -713,17 +713,16 @@ const ModuloMesas = ({ usuario, toast }) => {
     </div>
   );
 };
-
 const ModuloTickets = ({ usuario, toast }) => {
-  const [vista, setVista] = useState("nueva"); // nueva | historial
+  const [vista, setVista] = useState("nueva");
   const [platos, setPlatos] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [carrito, setCarrito] = useState([]);
   const [mesaActual, setMesaActual] = useState("1");
+  const [mesaInfo, setMesaInfo] = useState(null);
   const [catActiva, setCatActiva] = useState("Todos");
   const [modalCobro, setModalCobro] = useState(false);
-  const [ticketSel, setTicketSel] = useState(null);
- 
+
   const cargar = async () => {
     const [p, t] = await Promise.all([
       db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
@@ -733,58 +732,94 @@ const ModuloTickets = ({ usuario, toast }) => {
     setTickets(t || []);
   };
   useEffect(() => { cargar(); }, []);
- 
+
+  // ── Carga la comanda activa de la mesa seleccionada ──
+  useEffect(() => {
+    const cargarMesa = async () => {
+      if (!mesaActual) return;
+      const [mesasDB, comandasDB] = await Promise.all([
+        db("mesas", { filtro: `?numero=eq.${+mesaActual}` }),
+        db("comandas", { filtro: `?mesa=eq.${+mesaActual}&estado=neq.entregado&order=created_at.desc&limit=1` }),
+      ]);
+      const mesa = Array.isArray(mesasDB) && mesasDB.length > 0 ? mesasDB[0] : null;
+      setMesaInfo(mesa);
+      setCarrito([]);
+
+      // Si hay comanda activa y platos cargados, pre-llena el carrito
+      if (Array.isArray(comandasDB) && comandasDB.length > 0 && platos.length > 0) {
+        const items = (comandasDB[0].items || []).map((item) => {
+          const plato = platos.find((p) => p.nombre === item.nombre);
+          return plato ? { ...plato, qty: item.qty } : null;
+        }).filter(Boolean);
+        if (items.length > 0) setCarrito(items);
+      }
+    };
+    cargarMesa();
+  }, [mesaActual, platos]);
+
   const cats = ["Todos", ...new Set(platos.map((p) => p.categoria))];
   const platosFiltrados = catActiva === "Todos" ? platos : platos.filter((p) => p.categoria === catActiva);
- 
+
   const añadir = (plato) => {
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
   };
   const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
- 
+
   const totalCarrito = carrito.reduce((s, i) => s + Number(i.precio) * i.qty, 0);
- 
-const generarTicket = async (metodo) => {
+
+  const generarTicket = async (metodo) => {
     const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
+    const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 
     // 1. Genera el ticket
     await db("tickets", { metodo: "POST", cuerpo: {
       codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
-      metodo, items, total: totalCarrito,
-      hora: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+      metodo, items, total: totalCarrito, hora,
     }});
 
     // 2. Manda comanda a cocina
     const codigoComanda = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
-    const itemsComanda = carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false }));
     await db("comandas", { metodo: "POST", cuerpo: {
       codigo: codigoComanda, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
-      estado: "nuevo", items: itemsComanda,
+      estado: "nuevo", items: carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false })),
     }});
 
-    // 3. Libera la mesa (la marca libre y resetea su total)
+    // 3. Libera la mesa
     const mesasDB = await db("mesas", { filtro: `?numero=eq.${+mesaActual}` });
     if (Array.isArray(mesasDB) && mesasDB.length > 0) {
       await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesasDB[0].id}`, cuerpo: { estado: "libre", total: 0 } });
     }
 
+    // 4. Registra en Caja (movimiento de venta)
+    const sesiones = await db("caja_sesiones", { filtro: "?estado=eq.abierta&order=created_at.desc&limit=1" });
+    if (Array.isArray(sesiones) && sesiones.length > 0) {
+      await db("caja_movimientos", { metodo: "POST", cuerpo: {
+        sesion_id: sesiones[0].id,
+        tipo: "venta",
+        descripcion: `Ticket ${codigo} · Mesa ${mesaActual}`,
+        monto: totalCarrito,
+        metodo,
+        hora,
+      }});
+    }
+
     setCarrito([]);
+    setMesaInfo(null);
     setModalCobro(false);
     toast(`✅ Ticket ${codigo} · Cocina avisada · Mesa ${mesaActual} liberada`);
     cargar();
     setVista("historial");
   };
+
   const metodoPago = {
     efectivo: { icon: "💵", label: "Efectivo", color: C.gold },
     tarjeta: { icon: "💳", label: "Tarjeta", color: C.accent },
     bizum: { icon: "📱", label: "Bizum", color: C.success },
   };
- 
-  const calcTotal = (items) => (items || []).reduce((s, i) => s + i.precio * i.qty, 0);
- 
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -798,7 +833,7 @@ const generarTicket = async (metodo) => {
           ))}
         </div>
       </div>
- 
+
       {vista === "nueva" ? (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18 }}>
           {/* Carta */}
@@ -813,8 +848,17 @@ const generarTicket = async (metodo) => {
                 <label style={{ fontSize: 11, color: C.faint, fontWeight: 700 }}>Mesero</label>
                 <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginTop: 5 }}>👤 {usuario.nombre}</div>
               </div>
+              {/* Estado de la mesa */}
+              {mesaInfo && (
+                <div style={{ background: mesaInfo.estado === "ocupada" ? C.dangerLight : C.successLight, border: `1px solid ${mesaInfo.estado === "ocupada" ? C.danger : C.success}30`, borderRadius: 10, padding: "6px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: mesaInfo.estado === "ocupada" ? C.danger : C.success, textTransform: "uppercase" }}>
+                    {mesaInfo.estado === "ocupada" ? "🔴 Ocupada" : "🟢 Libre"}
+                  </div>
+                  {mesaInfo.total > 0 && <div style={{ fontSize: 13, fontWeight: 800, color: C.text }}>€{Number(mesaInfo.total).toFixed(2)}</div>}
+                </div>
+              )}
             </div>
- 
+
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               {cats.map((c) => (
                 <button key={c} onClick={() => setCatActiva(c)} style={{
@@ -823,7 +867,7 @@ const generarTicket = async (metodo) => {
                 }}>{c}</button>
               ))}
             </div>
- 
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
               {platosFiltrados.map((plato) => {
                 const enCarrito = carrito.find((i) => i.id === plato.id);
@@ -842,7 +886,7 @@ const generarTicket = async (metodo) => {
               })}
             </div>
           </div>
- 
+
           {/* Carrito */}
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", boxShadow: "0 2px 8px rgba(15,23,42,0.05)", height: "fit-content", maxHeight: "calc(100vh - 200px)" }}>
             <div style={{ padding: "16px 18px 12px", borderBottom: `1px solid ${C.border}` }}>
@@ -853,7 +897,7 @@ const generarTicket = async (metodo) => {
               {carrito.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "30px 20px", color: C.faint }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>🍽️</div>
-                  <div style={{ fontSize: 13 }}>Selecciona productos</div>
+                  <div style={{ fontSize: 13 }}>Selecciona productos o cambia el número de mesa</div>
                 </div>
               ) : carrito.map((item) => (
                 <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
@@ -887,7 +931,7 @@ const generarTicket = async (metodo) => {
           {tickets.length === 0 ? (
             <div style={{ textAlign: "center", padding: 48, color: C.faint }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>🧾</div>
-              <div style={{ fontSize: 14 }}>Aún no hay tickets. Genera el primero en "Nueva venta".</div>
+              <div style={{ fontSize: 14 }}>Aún no hay tickets.</div>
             </div>
           ) : tickets.map((t) => {
             const mp = metodoPago[t.metodo] || metodoPago.efectivo;
@@ -911,7 +955,7 @@ const generarTicket = async (metodo) => {
           })}
         </div>
       )}
- 
+
       {/* Modal cobro */}
       {modalCobro && (
         <Modal title={`💳 Cobrar mesa ${mesaActual}`} subtitle="Selecciona el método de pago" onClose={() => setModalCobro(false)}>
