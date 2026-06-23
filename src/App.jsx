@@ -804,8 +804,9 @@ const ModuloTickets = ({ usuario, toast }) => {
       }});
     }
 
-    setCarrito([]);
+  setCarrito([]);
     setMesaInfo(null);
+    setMesaActual("");
     setModalCobro(false);
     toast(`✅ Ticket ${codigo} · Cocina avisada · Mesa ${mesaActual} liberada`);
     cargar();
