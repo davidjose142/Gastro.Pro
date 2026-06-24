@@ -1843,10 +1843,12 @@ const ModuloMermas = ({ usuario, toast }) => {
   const [filtro, setFiltro] = useState("activos");
 
  const cargar = async () => {
-  const c = await db("comandas", { filtro: "?order=created_at" });
+    const c = await db("comandas", { filtro: "?order=created_at" });
+    setComandas(Array.isArray(c) ? c : []);
+  };
   useEffect(() => {
     cargar();
-    const intervalo = setInterval(cargar, 15000); // refresca cada 15s
+    const intervalo = setInterval(cargar, 15000);
     return () => clearInterval(intervalo);
   }, []);
  
@@ -1995,7 +1997,6 @@ const entregar = async (comanda) => {
       )}
     </div>
   );
-};
 };
 export default function App() {
   const [usuario, setUsuario] = useState(null);
