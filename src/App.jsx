@@ -176,8 +176,8 @@ const Login = ({ onLogin }) => {
     </g>
   </svg>
 </div>
-<h1 style={{ margin: "0 0 4px", fontSize: 28, fontWeight: 900, color: C.text, letterSpacing: 3 }}>CUCHARAL</h1>
-<p style={{ margin: "0 0 32px", color: C.muted, fontSize: 12, letterSpacing: 1, textTransform: "uppercase" }}>Software para restaurantes</p>
+<h1 style={{ margin: "0 0 4px", fontSize: 30, fontWeight: 700, color: C.text, letterSpacing: 4, fontFamily: "'Cinzel', serif" }}>CUCHARAL</h1>
+<p style={{ margin: "0 0 32px", color: C.muted, fontSize: 13, letterSpacing: 2, fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>Software para restaurantes</p>
         <Input label="Tu correo electrónico" type="email" placeholder="correo@restaurante.es" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
         {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
         <Btn full onClick={entrar} disabled={cargando}>{cargando ? "Verificando..." : "Entrar al sistema"}</Btn>
@@ -2050,7 +2050,7 @@ export default function App() {
     </g>
   </svg>
 </div>
-{!collapsed && <div><div style={{ fontWeight: 800, fontSize: 14, color: "#c9a84c", letterSpacing: 2 }}>CUCHARAL</div><div style={{ fontSize: 10, color: C.sidebarText }}>Software para restaurantes</div></div>}
+{!collapsed && <div><div style={{ fontWeight: 700, fontSize: 13, color: "#c9a84c", letterSpacing: 3, fontFamily: "'Cinzel', serif" }}>CUCHARAL</div><div style={{ fontSize: 10, color: C.sidebarText }}>Software para restaurantes</div></div>}
         </div>
 
         <div style={{ flex: 1, padding: collapsed ? "12px 8px" : "12px 10px", overflowY: "auto" }}>
