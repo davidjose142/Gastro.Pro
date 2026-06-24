@@ -1244,69 +1244,99 @@ const ModuloCaja = ({ usuario, toast }) => {
 };
 const ModuloReportes = ({ usuario, toast }) => {
   const [datos, setDatos] = useState(null);
- 
+  const [vistaReporte, setVistaReporte] = useState("resumen");
+  const [periodoVentas, setPeriodoVentas] = useState("semana");
+
   const cargar = async () => {
-    const [tickets, platos, cajas] = await Promise.all([
+    const [tickets, platos, cajas, inventario, mermas] = await Promise.all([
       db("tickets", { filtro: "?order=created_at.desc&limit=500" }),
       db("platos", { filtro: "?order=vendidos.desc" }),
       db("caja_sesiones", { filtro: "?estado=eq.cerrada&order=created_at.desc&limit=30" }),
+      db("inventario", { filtro: "?order=nombre" }),
+      db("mermas", { filtro: "?order=created_at.desc&limit=100" }),
     ]);
     setDatos({
       tickets: Array.isArray(tickets) ? tickets : [],
       platos: Array.isArray(platos) ? platos : [],
       cajas: Array.isArray(cajas) ? cajas : [],
+      inventario: Array.isArray(inventario) ? inventario : [],
+      mermas: Array.isArray(mermas) ? mermas : [],
     });
   };
   useEffect(() => { cargar(); }, []);
- 
-  const exportar = () => window.print();
- 
+
   if (!datos) return <Cargando />;
-  const { tickets, platos, cajas } = datos;
- 
-  // ─── Cálculos sobre datos reales ───
+  const { tickets, platos, cajas, inventario, mermas } = datos;
+
   const totalVentas = tickets.reduce((s, t) => s + Number(t.total), 0);
   const numTickets = tickets.length;
   const ticketMedio = numTickets > 0 ? totalVentas / numTickets : 0;
- 
-  // Ventas por método de pago
+
   const porMetodo = ["efectivo", "tarjeta", "bizum"].map((m) => {
     const items = tickets.filter((t) => t.metodo === m);
     const valor = items.reduce((s, t) => s + Number(t.total), 0);
     return { metodo: m, valor, count: items.length };
   }).filter((m) => m.count > 0);
   const totalMetodos = porMetodo.reduce((s, m) => s + m.valor, 0) || 1;
- 
-  // Platos más vendidos (de la tabla platos)
-  const platosTop = [...platos].sort((a, b) => b.vendidos - a.vendidos).slice(0, 8);
-  const maxVendidos = Math.max(...platosTop.map((p) => p.vendidos), 1);
- 
-  // Análisis de platos vendidos en tickets reales
+
   const conteoTickets = {};
   tickets.forEach((t) => {
     (t.items || []).forEach((i) => {
       if (!conteoTickets[i.nombre]) conteoTickets[i.nombre] = { nombre: i.nombre, qty: 0, ingresos: 0 };
       conteoTickets[i.nombre].qty += i.qty;
-      conteoTickets[i.nombre].ingresos += i.precio * i.qty;
+      conteoTickets[i.nombre].ingresos += (i.precio || 0) * i.qty;
     });
   });
-  const platosEnTickets = Object.values(conteoTickets).sort((a, b) => b.ingresos - a.ingresos).slice(0, 6);
- 
-  // Ventas por día (de cierres de caja)
-  const ventasPorDia = cajas.slice(0, 7).reverse().map((c) => ({
-    fecha: c.fecha ? new Date(c.fecha + "T00:00:00").toLocaleDateString("es-ES", { weekday: "short" }) : "—",
-    valor: Number(c.efectivo_contado) || 0,
-  }));
- 
+  const paloteo = Object.values(conteoTickets).sort((a, b) => b.qty - a.qty);
+  const totalUnidades = paloteo.reduce((s, p) => s + p.qty, 0) || 1;
+
+  const porMesero = {};
+  tickets.forEach((t) => {
+    const m = t.mesero || "Sin asignar";
+    if (!porMesero[m]) porMesero[m] = { mesero: m, total: 0, tickets: 0 };
+    porMesero[m].total += Number(t.total);
+    porMesero[m].tickets += 1;
+  });
+  const meseros = Object.values(porMesero).sort((a, b) => b.total - a.total);
+  const maxMesero = Math.max(...meseros.map((m) => m.total), 1);
+
+  const ahora = new Date();
+  const filtrarPorPeriodo = (t) => {
+    const fecha = new Date(t.created_at);
+    if (periodoVentas === "hoy") return fecha.toDateString() === ahora.toDateString();
+    if (periodoVentas === "semana") return (ahora - fecha) < 7 * 24 * 60 * 60 * 1000;
+    if (periodoVentas === "mes") return fecha.getMonth() === ahora.getMonth() && fecha.getFullYear() === ahora.getFullYear();
+    return true;
+  };
+  const ticketsFiltrados = tickets.filter(filtrarPorPeriodo);
+  const totalFiltrado = ticketsFiltrados.reduce((s, t) => s + Number(t.total), 0);
+
+  const ultimos7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i));
+    const label = d.toLocaleDateString("es-ES", { weekday: "short" });
+    const valor = tickets.filter((t) => new Date(t.created_at).toDateString() === d.toDateString()).reduce((s, t) => s + Number(t.total), 0);
+    return { label, valor };
+  });
+  const maxDia = Math.max(...ultimos7.map((d) => d.valor), 1);
+
+  const stockBajo = inventario.filter((i) => (i.stock || 0) <= (i.stock_minimo || 0));
+
+  const conteoMermas = {};
+  mermas.forEach((m) => {
+    const nombre = m.item_nombre || m.nombre || "Sin nombre";
+    if (!conteoMermas[nombre]) conteoMermas[nombre] = { nombre, cantidad: 0, costo: 0 };
+    conteoMermas[nombre].cantidad += Number(m.cantidad || 0);
+    conteoMermas[nombre].costo += Number(m.costo_estimado || 0);
+  });
+  const mermasAgrupadas = Object.values(conteoMermas).sort((a, b) => b.costo - a.costo);
+
   const metodoCfg = {
     efectivo: { label: "Efectivo", color: C.gold, icon: "💵" },
     tarjeta: { label: "Tarjeta", color: C.accent, icon: "💳" },
     bizum: { label: "Bizum", color: C.success, icon: "📱" },
   };
- 
   const PALETA = [C.accent, C.gold, C.success, C.purple, C.info, C.warning];
- 
-  // Donut SVG
+
   const Donut = ({ items, total }) => {
     let acum = 0; const R = 40, CIRC = 2 * Math.PI * R;
     return (
@@ -1337,109 +1367,242 @@ const ModuloReportes = ({ usuario, toast }) => {
       </div>
     );
   };
- 
+
+  const tabs = [
+    { id: "resumen", label: "📊 Resumen" },
+    { id: "paloteo", label: "🍽️ Paloteo" },
+    { id: "ventas", label: "💰 Ventas" },
+    { id: "meseros", label: "👤 Meseros" },
+    { id: "inventario", label: "📦 Inventario" },
+  ];
+
   return (
     <div>
       <style>{`@media print { .no-print { display: none !important; } }`}</style>
- 
-      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>📊 Reportes y análisis</h2>
-          <p style={{ margin: "2px 0 0", fontSize: 13, color: C.muted }}>Datos en tiempo real · {numTickets} tickets analizados</p>
+          <p style={{ margin: "2px 0 0", fontSize: 13, color: C.muted }}>{numTickets} tickets analizados</p>
         </div>
-        <Btn onClick={exportar} icon="📄">Exportar PDF</Btn>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn onClick={cargar} icon="🔄">Actualizar</Btn>
+          <Btn onClick={() => window.print()} icon="📄">Exportar PDF</Btn>
+        </div>
       </div>
- 
-      {numTickets === 0 ? (
-        <div style={{ textAlign: "center", padding: 60, color: C.faint, background: C.card, borderRadius: 16, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.muted }}>Aún no hay datos suficientes</div>
-          <div style={{ fontSize: 14, marginTop: 6 }}>Genera algunos tickets en el TPV y los reportes aparecerán aquí automáticamente.</div>
-        </div>
-      ) : (
-        <>
-          {/* KPIs */}
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
-            <KPICard icon="💶" label="Ingresos totales" value={`€${totalVentas.toFixed(2)}`} color={C.success} />
-            <KPICard icon="🧾" label="Tickets emitidos" value={numTickets} color={C.accent} />
-            <KPICard icon="📊" label="Ticket medio" value={`€${ticketMedio.toFixed(2)}`} color={C.gold} />
-            <KPICard icon="🍽️" label="Platos en carta" value={platos.length} color={C.purple} />
+
+      <div className="no-print" style={{ display: "flex", gap: 6, background: C.soft, borderRadius: 14, padding: 5, marginBottom: 20, flexWrap: "wrap" }}>
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setVistaReporte(t.id)} style={{
+            background: vistaReporte === t.id ? C.accent : "transparent",
+            color: vistaReporte === t.id ? "#fff" : C.muted,
+            border: "none", borderRadius: 10, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {vistaReporte === "resumen" && (
+        numTickets === 0 ? (
+          <div style={{ textAlign: "center", padding: 60, color: C.faint, background: C.card, borderRadius: 16, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.muted }}>Aún no hay datos suficientes</div>
+            <div style={{ fontSize: 14, marginTop: 6 }}>Genera algunos tickets en el TPV.</div>
           </div>
- 
-          {/* Fila: método de pago + ventas por día */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-              <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>💳 Ventas por método de pago</h3>
-              {porMetodo.length > 0 ? <Donut items={porMetodo} total={totalMetodos} /> : <div style={{ color: C.faint, fontSize: 13, textAlign: "center", padding: 20 }}>Sin datos de pago</div>}
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
+              <KPICard icon="💶" label="Ingresos totales" value={`€${totalVentas.toFixed(2)}`} color={C.success} />
+              <KPICard icon="🧾" label="Tickets emitidos" value={numTickets} color={C.accent} />
+              <KPICard icon="📊" label="Ticket medio" value={`€${ticketMedio.toFixed(2)}`} color={C.gold} />
+              <KPICard icon="🍽️" label="Platos en carta" value={platos.length} color={C.purple} />
             </div>
- 
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-              <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>📈 Cierres de caja recientes</h3>
-              {ventasPorDia.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+                <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>💳 Método de pago</h3>
+                {porMetodo.length > 0 ? <Donut items={porMetodo} total={totalMetodos} /> : <div style={{ color: C.faint, fontSize: 13, textAlign: "center", padding: 20 }}>Sin datos</div>}
+              </div>
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+                <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>📈 Últimos 7 días</h3>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
-                  {ventasPorDia.map((v, i) => {
-                    const maxV = Math.max(...ventasPorDia.map((x) => x.valor), 1);
-                    return (
-                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                        <div style={{ fontSize: 10, color: C.accent, fontWeight: 700 }}>€{v.valor.toFixed(0)}</div>
-                        <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: C.accent, height: `${(v.valor / maxV) * 90}px`, minHeight: 4 }} />
-                        <div style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{v.fecha}</div>
-                      </div>
-                    );
-                  })}
+                  {ultimos7.map((v, i) => (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                      <div style={{ fontSize: 9, color: C.accent, fontWeight: 700 }}>€{v.valor.toFixed(0)}</div>
+                      <div style={{ width: "100%", borderRadius: "4px 4px 0 0", background: v.valor > 0 ? C.accent : C.border, height: `${(v.valor / maxDia) * 90}px`, minHeight: v.valor > 0 ? 6 : 2 }} />
+                      <div style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{v.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ) : <div style={{ color: C.faint, fontSize: 13, textAlign: "center", padding: 30 }}>Cierra cajas para ver el histórico</div>}
+              </div>
+            </div>
+          </>
+        )
+      )}
+
+      {vistaReporte === "paloteo" && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: C.text }}>🍽️ Paloteo de platos</h3>
+          <p style={{ margin: "0 0 20px", fontSize: 13, color: C.muted }}>{totalUnidades} unidades vendidas en total</p>
+          {paloteo.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: C.faint }}>Sin datos de tickets aún</div>
+          ) : paloteo.map((p, i) => {
+            const pct = (p.qty / totalUnidades) * 100;
+            const palitos = Math.min(p.qty, 50);
+            const grupos = Math.floor(palitos / 5);
+            const resto = palitos % 5;
+            let tally = "";
+            for (let g = 0; g < grupos; g++) tally += "𝍷 ";
+            for (let r = 0; r < resto; r++) tally += "| ";
+            return (
+              <div key={p.nombre} style={{ marginBottom: 16, padding: 16, background: i === 0 ? C.accentLight : C.soft, borderRadius: 12, border: `1px solid ${i === 0 ? C.accent + "40" : C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 18, minWidth: 28 }}>{["🥇", "🥈", "🥉"][i] || `${i + 1}.`}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{p.nombre}</span>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: C.accent }}>{p.qty} uds.</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>€{p.ingresos.toFixed(2)} · {pct.toFixed(1)}%</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 20, color: i === 0 ? C.accent : C.muted, fontFamily: "monospace", marginBottom: 8, letterSpacing: 2 }}>{tally}</div>
+                <div style={{ background: C.card, borderRadius: 6, height: 8 }}>
+                  <div style={{ height: "100%", borderRadius: 6, background: i === 0 ? C.gold : C.accent, width: `${pct}%`, transition: "width .5s" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {vistaReporte === "ventas" && (
+        <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {[{ id: "hoy", label: "Hoy" }, { id: "semana", label: "Esta semana" }, { id: "mes", label: "Este mes" }, { id: "todo", label: "Todo" }].map((p) => (
+              <button key={p.id} onClick={() => setPeriodoVentas(p.id)} style={{
+                background: periodoVentas === p.id ? C.accent : C.card, color: periodoVentas === p.id ? "#fff" : C.muted,
+                border: `1px solid ${periodoVentas === p.id ? C.accent : C.border}`, borderRadius: 10, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}>{p.label}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
+            <KPICard icon="💶" label="Ingresos período" value={`€${totalFiltrado.toFixed(2)}`} color={C.success} />
+            <KPICard icon="🧾" label="Tickets período" value={ticketsFiltrados.length} color={C.accent} />
+            <KPICard icon="📊" label="Ticket medio" value={`€${ticketsFiltrados.length > 0 ? (totalFiltrado / ticketsFiltrados.length).toFixed(2) : "0.00"}`} color={C.gold} />
+          </div>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, marginBottom: 16 }}>
+            <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>📈 Ventas últimos 7 días</h3>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 160 }}>
+              {ultimos7.map((v, i) => (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                  <div style={{ fontSize: 11, color: C.accent, fontWeight: 700 }}>€{v.valor.toFixed(0)}</div>
+                  <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: v.valor > 0 ? C.accent : C.border, height: `${(v.valor / maxDia) * 130}px`, minHeight: v.valor > 0 ? 8 : 2 }} />
+                  <div style={{ fontSize: 11, color: C.faint, fontWeight: 600 }}>{v.label}</div>
+                </div>
+              ))}
             </div>
           </div>
- 
-          {/* Platos vendidos en tickets reales */}
-          {platosEnTickets.length > 0 && (
-            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, marginBottom: 20, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-              <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>🔥 Más vendidos (según tickets reales)</h3>
-              {platosEnTickets.map((p, i) => {
-                const maxIng = Math.max(...platosEnTickets.map((x) => x.ingresos), 1);
-                return (
-                  <div key={p.nombre} style={{ marginBottom: 14 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                      <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{["🥇", "🥈", "🥉", "4.", "5.", "6."][i]} {p.nombre}</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: C.success }}>€{p.ingresos.toFixed(2)} · {p.qty} uds.</span>
-                    </div>
-                    <div style={{ background: C.soft, borderRadius: 6, height: 8 }}>
-                      <div style={{ height: "100%", borderRadius: 6, background: i === 0 ? C.gold : C.accent, width: `${(p.ingresos / maxIng) * 100}%`, transition: "width .5s" }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
- 
-          {/* Tabla platos de la carta */}
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>🍽️ Ranking histórico de platos</h3>
-            <div style={{ overflowX: "auto" }}>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+            <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>🧾 Tickets del período</h3>
+            {ticketsFiltrados.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin tickets en este período</div>
+            ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                    {["#", "Plato", "Precio", "Vendidos", "Ingresos"].map((h, i) => (
-                      <th key={h} style={{ padding: "10px 12px", textAlign: i >= 2 ? "right" : "left", fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase" }}>{h}</th>
+                    {["Código", "Mesa", "Hora", "Mesero", "Método", "Total"].map((h, i) => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: i >= 4 ? "right" : "left", fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {platosTop.map((p, i) => (
-                    <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                      <td style={{ padding: "12px", fontSize: 14, fontWeight: 800, color: i < 3 ? C.gold : C.faint }}>{i + 1}</td>
-                      <td style={{ padding: "12px", fontSize: 13, fontWeight: 700, color: C.text }}>{p.imagen} {p.nombre}</td>
-                      <td style={{ padding: "12px", fontSize: 13, color: C.muted, textAlign: "right" }}>€{Number(p.precio).toFixed(2)}</td>
-                      <td style={{ padding: "12px", fontSize: 13, color: C.muted, textAlign: "right", fontWeight: 600 }}>{p.vendidos}</td>
-                      <td style={{ padding: "12px", fontSize: 14, fontWeight: 800, color: C.success, textAlign: "right" }}>€{(Number(p.precio) * p.vendidos).toFixed(2)}</td>
+                  {ticketsFiltrados.slice(0, 20).map((t) => (
+                    <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontWeight: 700, color: C.accent }}>{t.codigo}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, color: C.muted }}>Mesa {t.mesa}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, color: C.muted }}>{t.hora}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, color: C.text }}>{t.mesero}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, color: C.muted, textAlign: "right" }}>{metodoCfg[t.metodo]?.icon} {metodoCfg[t.metodo]?.label}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 800, color: C.success, textAlign: "right" }}>€{Number(t.total).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {vistaReporte === "meseros" && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: C.text }}>👤 Ventas por mesero</h3>
+          <p style={{ margin: "0 0 20px", fontSize: 13, color: C.muted }}>{meseros.length} meseros con ventas registradas</p>
+          {meseros.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: C.faint }}>Sin datos aún</div>
+          ) : meseros.map((m, i) => (
+            <div key={m.mesero} style={{ marginBottom: 16, padding: 16, background: C.soft, borderRadius: 12, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: PALETA[i % PALETA.length] + "25", border: `2px solid ${PALETA[i % PALETA.length]}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: PALETA[i % PALETA.length] }}>
+                    {m.mesero.charAt(0)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{m.mesero}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{m.tickets} tickets · Ticket medio €{(m.total / m.tickets).toFixed(2)}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: PALETA[i % PALETA.length] }}>€{m.total.toFixed(2)}</div>
+              </div>
+              <div style={{ background: C.card, borderRadius: 6, height: 8 }}>
+                <div style={{ height: "100%", borderRadius: 6, background: PALETA[i % PALETA.length], width: `${(m.total / maxMesero) * 100}%`, transition: "width .5s" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {vistaReporte === "inventario" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {stockBajo.length > 0 && (
+            <div style={{ background: C.dangerLight, border: `1px solid ${C.danger}30`, borderRadius: 14, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.danger, marginBottom: 8 }}>⚠️ {stockBajo.length} productos con stock bajo</div>
+              {stockBajo.map((i) => (
+                <div key={i.id} style={{ fontSize: 12, color: C.danger, marginBottom: 4 }}>• {i.nombre} — Stock: {i.stock} / Mínimo: {i.stock_minimo}</div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>📦 Inventario actual</h3>
+              {inventario.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin inventario registrado</div>
+              ) : inventario.map((item) => (
+                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{item.nombre}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{item.categoria} · {item.unidad}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: (item.stock || 0) <= (item.stock_minimo || 0) ? C.danger : C.success }}>{item.stock} {item.unidad}</div>
+                    <div style={{ fontSize: 10, color: C.faint }}>Mín: {item.stock_minimo}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>🗑️ Mermas por ítem</h3>
+              {mermasAgrupadas.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin mermas registradas</div>
+              ) : mermasAgrupadas.map((m, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{m.nombre}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.danger }}>-€{m.costo.toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{m.cantidad} uds.</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
