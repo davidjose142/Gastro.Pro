@@ -1843,7 +1843,7 @@ const ModuloMermas = ({ usuario, toast }) => {
   const [filtro, setFiltro] = useState("activos");
 
  const cargar = async () => {
-    const c = await db("comandas", { filtro: "?estado=neq.entregado&order=created_at" });
+  const c = await db("comandas", { filtro: "?order=created_at" });
   useEffect(() => {
     cargar();
     const intervalo = setInterval(cargar, 15000); // refresca cada 15s
