@@ -164,16 +164,17 @@ const Login = ({ onLogin }) => {
     <div style={{ minHeight: "100vh", background: `linear-gradient(135deg, #1a1a14 0%, #2d2a1e 50%, #1a1a14 100%)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 16 }}>
       <div style={{ background: C.card, borderRadius: 24, padding: "48px 40px", width: "100%", maxWidth: 400, boxShadow: "0 30px 80px rgba(0,0,0,0.3)", textAlign: "center" }}>
 <div style={{ margin: "0 auto 16px", textAlign: "center" }}>
-  <svg viewBox="300 200 800 500" width="120" height="70" xmlns="http://www.w3.org/2000/svg">
-    <g transform="translate(0,768) scale(0.1,-0.1)" fill="url(#lg)" stroke="none">
-      <defs>
-        <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#f0d080"/>
-          <stop offset="100%" stopColor="#c9a84c"/>
-        </linearGradient>
-      </defs>
-      <path d="M7610 5841 c106 -31 242 -99 335 -169 90 -67 165 -143 165 -168 0 -22 -210 -243 -237 -250 -18 -5 -39 9 -99 65 -127 118 -257 171 -424 171 -266 0 -471 -137 -595 -398 -72 -150 -123 -192 -237 -192 -84 1 -128 22 -230 112 -205 181 -290 219 -488 219 -276 -1 -573 -151 -652 -329 -28 -62 -27 -145 1 -200 60 -118 220 -228 418 -289 75 -22 107 -26 218 -27 210 -1 283 30 527 225 163 130 228 174 360 244 290 153 632 224 1175 241z"/>
-    </g>
+  <svg viewBox="0 0 40 40" width="80" height="80" xmlns="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+    <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#f0d080"/>
+      <stop offset="100%" stopColor="#c9a84c"/>
+    </linearGradient>
+  </defs>
+  <path d="M20 4 C11.2 4 4 11.2 4 20 C4 28.8 11.2 36 20 36 C24.4 36 28.4 34.2 31.4 31.2 L28.6 28.4 C26.4 30.6 23.4 32 20 32 C13.4 32 8 26.6 8 20 C8 13.4 13.4 8 20 8 C23.4 8 26.4 9.4 28.6 11.6 L31.4 8.8 C28.4 5.8 24.4 4 20 4 Z" fill="url(#lg)"/>
+  <circle cx="33" cy="20" r="3" fill="url(#lg)"/>
+  <circle cx="33" cy="13" r="2" fill="url(#lg)" opacity="0.7"/>
+  <circle cx="33" cy="27" r="2" fill="url(#lg)" opacity="0.7"/>
   </svg>
 </div>
 <h1 style={{ margin: "0 0 4px", fontSize: 30, fontWeight: 700, color: C.text, letterSpacing: 4, fontFamily: "'Cinzel', serif" }}>CUCHARAL</h1>
