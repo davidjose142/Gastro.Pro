@@ -1837,7 +1837,7 @@ const ModuloMermas = ({ usuario, toast }) => {
     </div>
   );
 };
- const ModuloCocina = ({ usuario, toast }) => {}
+ const ModuloCocina = ({ usuario, toast }) => {
   const [comandas, setComandas] = useState(null);
   const [filtro, setFiltro] = useState("activos");
 
@@ -1995,7 +1995,7 @@ const entregar = async (comanda) => {
     </div>
   );
 };
- 
+};
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
