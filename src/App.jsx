@@ -834,7 +834,7 @@ const ModuloMesas = ({ usuario, toast }) => {
     const codigo = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
     await db("comandas", { metodo: "POST", cuerpo: {
       codigo, mesa: mesa.numero, zona: mesa.zona, mesero: usuario.nombre,
-      estado: "nuevo", items: carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false })),
+      estado: "nuevo", items: carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: i.nota || "", listo: false })),
     }});
     setCarrito([]); setSeleccionada(null); cargar();
     toast(`✅ Pedido enviado a cocina · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
@@ -846,6 +846,7 @@ const ModuloMesas = ({ usuario, toast }) => {
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
   };
   const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
+  const actualizarNota = (id, nota) => setCarrito(carrito.map((i) => i.id === id ? { ...i, nota } : i));
 
   // ── Drag & Drop ──
   const handleMouseDown = (e, mesa) => {
@@ -1059,13 +1060,27 @@ const ModuloMesas = ({ usuario, toast }) => {
           {carrito.length > 0 && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.accentLight }}>
               {carrito.map((i) => (
-                <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: C.text }}>{i.imagen} {i.nombre}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button onClick={() => quitar(i.id)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.border, cursor: "pointer", fontSize: 12 }}>−</button>
-                    <span style={{ fontSize: 12, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{i.qty}</span>
-                    <button onClick={() => añadir(i)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 12 }}>+</button>
+                <div key={i.id} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{i.imagen} {i.nombre}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button onClick={() => quitar(i.id)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.border, cursor: "pointer", fontSize: 12 }}>−</button>
+                      <span style={{ fontSize: 12, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{i.qty}</span>
+                      <button onClick={() => añadir(i)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 12 }}>+</button>
+                    </div>
                   </div>
+                  <input
+                    type="text"
+                    placeholder="📝 Nota (sin gluten, sin cebolla...)"
+                    value={i.nota || ""}
+                    onChange={(e) => actualizarNota(i.id, e.target.value)}
+                    style={{
+                      width: "100%", fontSize: 11, padding: "4px 8px", borderRadius: 6,
+                      border: `1px solid ${i.nota ? C.warning : C.border}`,
+                      background: i.nota ? C.warningLight : "#fff",
+                      color: C.text, outline: "none", boxSizing: "border-box",
+                    }}
+                  />
                 </div>
               ))}
             </div>
