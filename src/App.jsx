@@ -695,14 +695,6 @@ const ModuloMesas = ({ usuario, toast }) => {
     toast(`✅ Pedido enviado a cocina · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
   };
   const añadir = (plato) => {
-    const prod = productosStock.find((p) => p.nombre.toLowerCase() === plato.nombre.toLowerCase());
-    if (prod) {
-      const enCarritoQty = carrito.find((i) => i.id === plato.id)?.qty || 0;
-      if (prod.stock_actual - enCarritoQty <= 0 && usuario.rol !== "administrador") {
-        toast(`🔴 ${plato.nombre} está agotado en stock`, C.danger);
-        return;
-      }
-    }
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
