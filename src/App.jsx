@@ -937,27 +937,10 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
     }
 
   // 5. Descuenta stock de productos terminados
-    const productosDB = await db("productos_stock", { filtro: "?order=nombre" });
-    if (Array.isArray(productosDB)) {
+    const stockDB = await db("productos_stock", { filtro: "?order=nombre" });
+    if (Array.isArray(stockDB)) {
       for (const item of carrito) {
-        const prod = productosDB.find((p) => p.nombre.toLowerCase() === item.nombre.toLowerCase());
-        if (prod) {
-          const nuevoStock = Math.max(0, prod.stock_actual - item.qty);
-          await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${prod.id}`, cuerpo: { stock_actual: nuevoStock } });
-          if (nuevoStock === 0) {
-            toast(`🔴 ${prod.nombre} agotado — reponer stock`, C.danger);
-          } else if (nuevoStock <= prod.stock_minimo) {
-            toast(`⚠️ Stock bajo: ${prod.nombre} — quedan ${nuevoStock} ${prod.unidad}`, C.warning);
-          }
-        }
-      }
-    }
-
-  // 5. Descuenta stock de productos terminados
-    const productosDB = await db("productos_stock", { filtro: "?order=nombre" });
-    if (Array.isArray(productosDB)) {
-      for (const item of carrito) {
-        const prod = productosDB.find((p) => p.nombre.toLowerCase() === item.nombre.toLowerCase());
+        const prod = stockDB.find((p) => p.nombre.toLowerCase() === item.nombre.toLowerCase());
         if (prod) {
           const nuevoStock = Math.max(0, prod.stock_actual - item.qty);
           await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${prod.id}`, cuerpo: { stock_actual: nuevoStock } });
