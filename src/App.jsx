@@ -303,13 +303,17 @@ const ModuloInventario = ({ usuario, toast }) => {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
 
+  const [platos, setPlatos] = useState([]);
+
   const cargar = async () => {
-    const [inv, prod] = await Promise.all([
+    const [inv, prod, pl] = await Promise.all([
       db("inventario", { filtro: "?order=nombre" }),
       db("productos_stock", { filtro: "?order=nombre" }),
+      db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
     ]);
     setItems(Array.isArray(inv) ? inv : []);
     setProductos(Array.isArray(prod) ? prod : []);
+    setPlatos(Array.isArray(pl) ? pl : []);
   };
   useEffect(() => { cargar(); }, []);
 
@@ -470,7 +474,17 @@ const ModuloInventario = ({ usuario, toast }) => {
         <Modal title={modal === "n" ? "Nuevo producto" : "Editar producto"} onClose={() => setModal(null)}>
           <div style={{ display: "grid", gridTemplateColumns: "60px 1fr", gap: 12 }}>
             <Input label="Emoji" value={form.imagen || "📦"} onChange={(e) => setForm({ ...form, imagen: e.target.value })} />
-            <Input label="Nombre del producto" value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+            {modal === "n" ? (
+              <Select label="Plato de la carta" value={form.nombre || ""} onChange={(e) => {
+                const plato = platos.find(p => p.nombre === e.target.value);
+                setForm({ ...form, nombre: e.target.value, imagen: plato?.imagen || form.imagen || "📦" });
+              }}>
+                <option value="">— Selecciona un plato —</option>
+                {platos.map((p) => <option key={p.id} value={p.nombre}>{p.imagen} {p.nombre}</option>)}
+              </Select>
+            ) : (
+              <Input label="Nombre del producto" value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+            )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <Input label="Stock actual" type="number" value={form.stock_actual || ""} onChange={(e) => setForm({ ...form, stock_actual: e.target.value })} />
