@@ -6,8 +6,8 @@ import { useState, useEffect } from "react";
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
-const SUPABASE_URL = "https://jwrhgseculraqouljncw.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3cmhnc2VjdWxyYXFvdWxqbmN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3NjE5ODMsImV4cCI6MjA5NzMzNzk4M30.5JargPVMn1kP7c6eXBjdf2LzKkkcSrKcywUMRat2Pus";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
 
 const db = async (tabla, opciones = {}) => {
   const { metodo = "GET", cuerpo, filtro = "" } = opciones;
