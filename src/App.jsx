@@ -800,7 +800,11 @@ const ModuloMesas = ({ usuario, toast }) => {
   const [seleccionada, setSeleccionada] = useState(null);
   const [carrito, setCarrito] = useState([]);
   const [platos, setPlatos] = useState([]);
- 
+  const [vista, setVista] = useState("operacion");
+  const [dragging, setDragging] = useState(null);
+  const [editModal, setEditModal] = useState(null);
+  const [formMesa, setFormMesa] = useState({});
+
   const cargar = async () => {
     const [m, p] = await Promise.all([
       db("mesas", { filtro: "?order=numero" }),
@@ -810,44 +814,84 @@ const ModuloMesas = ({ usuario, toast }) => {
     setPlatos(p || []);
   };
   useEffect(() => { cargar(); }, []);
- 
+
   const estadoCfg = {
     libre: { color: C.success, bg: C.successLight, label: "Libre" },
     ocupada: { color: C.danger, bg: C.dangerLight, label: "Ocupada" },
     reservada: { color: C.warning, bg: C.warningLight, label: "Reservada" },
   };
- 
+
   const cambiarEstado = async (mesa, estado) => {
     await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { estado } });
     setSeleccionada((prev) => prev?.id === mesa.id ? { ...prev, estado } : prev);
     cargar();
     toast(`Mesa ${mesa.numero} · ${estadoCfg[estado].label}`, estadoCfg[estado].color);
   };
+
   const guardarPedido = async (mesa) => {
     const total = carrito.reduce((s, i) => s + i.precio * i.qty, 0);
-    // Actualiza la mesa
     await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { estado: "ocupada", total } });
-    // Crea la comanda para la cocina
     const codigo = `C-${String(Math.floor(Math.random() * 900) + 100)}`;
-    const itemsComanda = carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false }));
     await db("comandas", { metodo: "POST", cuerpo: {
       codigo, mesa: mesa.numero, zona: mesa.zona, mesero: usuario.nombre,
-      estado: "nuevo", items: itemsComanda,
+      estado: "nuevo", items: carrito.map((i) => ({ nombre: i.nombre, qty: i.qty, nota: "", listo: false })),
     }});
-    setCarrito([]);
-    setSeleccionada(null);
-    cargar();
+    setCarrito([]); setSeleccionada(null); cargar();
     toast(`✅ Pedido enviado a cocina · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
   };
+
   const añadir = (plato) => {
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
   };
   const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
- 
+
+  // ── Drag & Drop ──
+  const handleMouseDown = (e, mesa) => {
+    if (vista !== "salon") return;
+    e.preventDefault();
+    setDragging({ id: mesa.id, offsetX: e.clientX - (mesa.pos_x || 0), offsetY: e.clientY - (mesa.pos_y || 0) });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!dragging) return;
+    const newX = Math.max(0, Math.min(e.clientX - dragging.offsetX, 760));
+    const newY = Math.max(0, Math.min(e.clientY - dragging.offsetY, 500));
+    setMesas((prev) => prev.map((m) => m.id === dragging.id ? { ...m, pos_x: newX, pos_y: newY } : m));
+  };
+
+  const handleMouseUp = async () => {
+    if (!dragging) return;
+    const mesa = mesas.find((m) => m.id === dragging.id);
+    if (mesa) await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${mesa.id}`, cuerpo: { pos_x: mesa.pos_x, pos_y: mesa.pos_y } });
+    setDragging(null);
+  };
+
+  // ── Editar mesa ──
+  const guardarMesa = async () => {
+    await db("mesas", { metodo: "PATCH", filtro: `?id=eq.${formMesa.id}`, cuerpo: {
+      numero: +formMesa.numero, zona: formMesa.zona, capacidad: +formMesa.capacidad,
+    }});
+    toast("✅ Mesa actualizada"); setEditModal(null); cargar();
+  };
+
+  const nuevaMesa = async () => {
+    const maxNum = Math.max(...(mesas?.map(m => m.numero) || [0]));
+    await db("mesas", { metodo: "POST", cuerpo: {
+      numero: maxNum + 1, zona: "Salón Principal", capacidad: 4,
+      estado: "libre", total: 0, pos_x: 20, pos_y: 20,
+    }});
+    toast("✅ Mesa creada"); cargar();
+  };
+
+  const eliminarMesa = async (id) => {
+    await db("mesas", { metodo: "DELETE", filtro: `?id=eq.${id}` });
+    setEditModal(null); toast("🗑️ Mesa eliminada", C.warning); cargar();
+  };
+
   if (!mesas) return <Cargando />;
- 
+
   const zonas = ["Todas", ...new Set(mesas.map((m) => m.zona))];
   const mesasFiltradas = zonaActiva === "Todas" ? mesas : mesas.filter((m) => m.zona === zonaActiva);
   const stats = {
@@ -856,65 +900,132 @@ const ModuloMesas = ({ usuario, toast }) => {
     reservadas: mesas.filter((m) => m.estado === "reservada").length,
   };
   const totalCarrito = carrito.reduce((s, i) => s + i.precio * i.qty, 0);
- 
+
   return (
     <div style={{ display: "flex", gap: 20, height: "calc(100vh - 130px)" }}>
-      {/* Zona principal */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Stats + zonas */}
+
+        {/* Header */}
         <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
           {[
             { label: "Libres", val: stats.libres, color: C.success },
             { label: "Ocupadas", val: stats.ocupadas, color: C.danger },
             { label: "Reservadas", val: stats.reservadas, color: C.warning },
           ].map((s) => (
-            <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 16px", display: "flex", gap: 8, alignItems: "center", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+            <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 16px", display: "flex", gap: 8, alignItems: "center" }}>
               <div style={{ width: 9, height: 9, borderRadius: "50%", background: s.color }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{s.val} {s.label}</span>
             </div>
           ))}
           <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {zonas.map((z) => (
-              <button key={z} onClick={() => setZonaActiva(z)} style={{
-                background: zonaActiva === z ? C.accent : C.card, color: zonaActiva === z ? "#fff" : C.muted,
-                border: `1px solid ${zonaActiva === z ? C.accent : C.border}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
-              }}>{z}</button>
+          {/* Tabs de vista */}
+          <div style={{ display: "flex", gap: 6, background: C.soft, borderRadius: 12, padding: 4 }}>
+            {[{ id: "operacion", label: "🪑 Operación" }, { id: "salon", label: "🗺️ Salón" }].map((v) => (
+              <button key={v.id} onClick={() => setVista(v.id)} style={{
+                background: vista === v.id ? C.accent : "transparent", color: vista === v.id ? "#fff" : C.muted,
+                border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}>{v.label}</button>
             ))}
           </div>
+          {vista === "salon" && esAdmin(usuario.rol) && (
+            <Btn onClick={nuevaMesa} icon="+">Nueva mesa</Btn>
+          )}
+          {vista === "operacion" && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {zonas.map((z) => (
+                <button key={z} onClick={() => setZonaActiva(z)} style={{
+                  background: zonaActiva === z ? C.accent : C.card, color: zonaActiva === z ? "#fff" : C.muted,
+                  border: `1px solid ${zonaActiva === z ? C.accent : C.border}`, borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>{z}</button>
+              ))}
+            </div>
+          )}
         </div>
- 
-        {/* Grid de mesas */}
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 14 }}>
-            {mesasFiltradas.map((mesa) => {
-              const cfg = estadoCfg[mesa.estado];
-              const sel = seleccionada?.id === mesa.id;
-              return (
-                <div key={mesa.id} onClick={() => { setSeleccionada(sel ? null : mesa); setCarrito([]); }}
-                  style={{
+
+        {/* VISTA OPERACIÓN */}
+        {vista === "operacion" && (
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 14 }}>
+              {mesasFiltradas.map((mesa) => {
+                const cfg = estadoCfg[mesa.estado];
+                const sel = seleccionada?.id === mesa.id;
+                return (
+                  <div key={mesa.id} onClick={() => { setSeleccionada(sel ? null : mesa); setCarrito([]); }} style={{
                     background: sel ? C.accentLight : C.card,
                     border: `2px solid ${sel ? C.accent : cfg.color + "50"}`,
                     borderRadius: 16, padding: "18px 10px", cursor: "pointer", textAlign: "center",
                     boxShadow: sel ? `0 0 0 3px ${C.accent}15` : "0 1px 4px rgba(15,23,42,0.06)",
                     transition: "all .15s",
                   }}>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: sel ? C.accent : C.text, marginBottom: 6 }}>{mesa.numero}</div>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: cfg.color, fontWeight: 700, background: cfg.bg, borderRadius: 8, padding: "2px 8px" }}>
-                    <span style={{ fontSize: 7 }}>●</span> {cfg.label}
+                    <div style={{ fontSize: 26, fontWeight: 900, color: sel ? C.accent : C.text, marginBottom: 6 }}>{mesa.numero}</div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: cfg.color, fontWeight: 700, background: cfg.bg, borderRadius: 8, padding: "2px 8px" }}>
+                      <span style={{ fontSize: 7 }}>●</span> {cfg.label}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.faint, marginTop: 6 }}>{mesa.zona} · {mesa.capacidad}p</div>
+                    {mesa.estado === "ocupada" && mesa.total > 0 && <div style={{ fontSize: 13, fontWeight: 800, color: C.accent, marginTop: 4 }}>€{Number(mesa.total).toFixed(2)}</div>}
                   </div>
-                  <div style={{ fontSize: 10, color: C.faint, marginTop: 6 }}>{mesa.zona} · {mesa.capacidad}p</div>
-                  {mesa.estado === "ocupada" && mesa.total > 0 && <div style={{ fontSize: 13, fontWeight: 800, color: C.accent, marginTop: 4 }}>€{Number(mesa.total).toFixed(2)}</div>}
-                  {mesa.estado === "reservada" && mesa.reserva && <div style={{ fontSize: 9, color: C.warning, marginTop: 4 }}>{mesa.reserva}</div>}
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* VISTA SALÓN */}
+        {vista === "salon" && (
+          <div
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{ flex: 1, background: C.soft, borderRadius: 16, border: `2px dashed ${C.border}`, position: "relative", overflow: "hidden", cursor: dragging ? "grabbing" : "default", userSelect: "none" }}
+          >
+            <div style={{ position: "absolute", top: 12, left: 12, fontSize: 11, color: C.faint, fontWeight: 600 }}>
+              {esAdmin(usuario.rol) ? "Arrastra las mesas para reposicionarlas" : "Vista del salón"}
+            </div>
+            {mesas.map((mesa) => {
+              const cfg = estadoCfg[mesa.estado];
+              return (
+                <div
+                  key={mesa.id}
+                  onMouseDown={(e) => esAdmin(usuario.rol) && handleMouseDown(e, mesa)}
+                  style={{
+                    position: "absolute",
+                    left: mesa.pos_x || 20,
+                    top: mesa.pos_y || 20,
+                    width: 100,
+                    background: C.card,
+                    border: `2px solid ${cfg.color}`,
+                    borderRadius: 14,
+                    padding: "12px 8px",
+                    textAlign: "center",
+                    cursor: esAdmin(usuario.rol) ? (dragging?.id === mesa.id ? "grabbing" : "grab") : "default",
+                    boxShadow: dragging?.id === mesa.id ? `0 8px 24px rgba(0,0,0,0.15)` : "0 2px 8px rgba(0,0,0,0.08)",
+                    zIndex: dragging?.id === mesa.id ? 100 : 1,
+                    transition: dragging?.id === mesa.id ? "none" : "box-shadow .2s",
+                  }}
+                >
+                  <div style={{ fontSize: 20, fontWeight: 900, color: C.text }}>{mesa.numero}</div>
+                  <div style={{ fontSize: 9, color: cfg.color, fontWeight: 700, marginTop: 2 }}>● {cfg.label}</div>
+                  <div style={{ fontSize: 9, color: C.faint, marginTop: 2 }}>{mesa.zona}</div>
+                  <div style={{ fontSize: 9, color: C.faint }}>{mesa.capacidad}p</div>
+                  {mesa.estado === "ocupada" && mesa.total > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.accent, marginTop: 2 }}>€{Number(mesa.total).toFixed(2)}</div>
+                  )}
+                  {esAdmin(usuario.rol) && (
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); setFormMesa({ ...mesa }); setEditModal(mesa); }}
+                      style={{ marginTop: 6, background: C.accent, border: "none", color: "#fff", borderRadius: 6, padding: "3px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", width: "100%" }}
+                    >✏️ Editar</button>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
+        )}
       </div>
- 
-      {/* Panel lateral de pedido */}
-      {seleccionada && (
+
+      {/* Panel lateral pedido */}
+      {seleccionada && vista === "operacion" && (
         <div style={{ width: 300, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", flexShrink: 0, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${C.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -933,7 +1044,6 @@ const ModuloMesas = ({ usuario, toast }) => {
               ))}
             </div>
           </div>
- 
           <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
             <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Añadir al pedido</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -946,7 +1056,6 @@ const ModuloMesas = ({ usuario, toast }) => {
               ))}
             </div>
           </div>
- 
           {carrito.length > 0 && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.accentLight }}>
               {carrito.map((i) => (
@@ -961,7 +1070,6 @@ const ModuloMesas = ({ usuario, toast }) => {
               ))}
             </div>
           )}
- 
           <div style={{ padding: "14px 16px", borderTop: `2px solid ${C.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Total nuevo</span>
@@ -971,10 +1079,29 @@ const ModuloMesas = ({ usuario, toast }) => {
           </div>
         </div>
       )}
+
+      {/* Modal editar mesa */}
+      {editModal && (
+        <Modal title={`✏️ Editar Mesa ${editModal.numero}`} onClose={() => setEditModal(null)}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Input label="Número" type="number" value={formMesa.numero || ""} onChange={(e) => setFormMesa({ ...formMesa, numero: e.target.value })} />
+            <Input label="Capacidad (personas)" type="number" value={formMesa.capacidad || ""} onChange={(e) => setFormMesa({ ...formMesa, capacidad: e.target.value })} />
+          </div>
+          <Select label="Zona" value={formMesa.zona || ""} onChange={(e) => setFormMesa({ ...formMesa, zona: e.target.value })}>
+            {["Salón Principal", "Terraza", "Privado", "Barra", "Interior"].map((z) => <option key={z}>{z}</option>)}
+          </Select>
+          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 6 }}>
+            <Btn variant="danger" onClick={() => eliminarMesa(editModal.id)}>🗑️ Eliminar mesa</Btn>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="secondary" onClick={() => setEditModal(null)}>Cancelar</Btn>
+              <Btn onClick={guardarMesa}>Guardar</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
-};
-const ModuloTickets = ({ usuario, toast }) => {
+};const ModuloTickets = ({ usuario, toast }) => {
   const [vista, setVista] = useState("nueva");
   const [platos, setPlatos] = useState([]);
   const [tickets, setTickets] = useState([]);
