@@ -331,9 +331,31 @@ const ModuloInventario = ({ usuario, toast }) => {
   };
   const eliminarProducto = async (id) => { await db("productos_stock", { metodo: "DELETE", filtro: `?id=eq.${id}` }); toast("🗑️ Eliminado", C.warning); cargar(); };
   const entradaStock = async (producto, cantidad) => {
+    // 1. Suma al stock de productos terminados
     const nuevoStock = (producto.stock_actual || 0) + cantidad;
     await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${producto.id}`, cuerpo: { stock_actual: nuevoStock } });
-    toast(`✅ +${cantidad} ${producto.unidad} añadidos a ${producto.nombre}`); cargar();
+
+    // 2. Busca si tiene receta vinculada por nombre
+    const platos = await db("platos", { filtro: `?nombre=eq.${encodeURIComponent(producto.nombre)}&limit=1` });
+    if (Array.isArray(platos) && platos.length > 0) {
+      const receta = await db("recetas", { filtro: `?plato_id=eq.${platos[0].id}` });
+      if (Array.isArray(receta) && receta.length > 0) {
+        for (const r of receta) {
+          const invItems = await db("inventario", { filtro: `?id=eq.${r.ingrediente_id}` });
+          if (Array.isArray(invItems) && invItems.length > 0) {
+            const inv = invItems[0];
+            const nuevaCantidad = Math.max(0, (inv.cantidad || 0) - (r.cantidad * cantidad));
+            await db("inventario", { metodo: "PATCH", filtro: `?id=eq.${inv.id}`, cuerpo: { cantidad: nuevaCantidad } });
+          }
+        }
+        toast(`✅ +${cantidad} ${producto.unidad} de ${producto.nombre} · Ingredientes descontados`);
+      } else {
+        toast(`✅ +${cantidad} ${producto.unidad} añadidos a ${producto.nombre}`);
+      }
+    } else {
+      toast(`✅ +${cantidad} ${producto.unidad} añadidos a ${producto.nombre}`);
+    }
+    cargar();
   };
 
   const st = (i) => i.cantidad <= 0 ? { l: "Agotado", c: C.danger } : i.cantidad <= i.minimo ? { l: "Crítico", c: C.danger } : i.cantidad <= i.minimo * 2 ? { l: "Bajo", c: C.warning } : { l: "OK", c: C.success };
@@ -474,24 +496,63 @@ const ModuloInventario = ({ usuario, toast }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 const ModuloPlatos = ({ usuario, toast }) => {
   const [platos, setPlatos] = useState(null);
+  const [inventario, setInventario] = useState([]);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
+  const [recetaModal, setRecetaModal] = useState(null);
+  const [recetaItems, setRecetaItems] = useState([]);
+  const [formIng, setFormIng] = useState({ ingrediente_id: "", cantidad: "", unidad: "g" });
 
-  const cargar = async () => setPlatos(await db("platos", { filtro: "?order=vendidos.desc" }) || []);
+  const cargar = async () => {
+    const [p, inv] = await Promise.all([
+      db("platos", { filtro: "?order=vendidos.desc" }),
+      db("inventario", { filtro: "?order=nombre" }),
+    ]);
+    setPlatos(p || []);
+    setInventario(Array.isArray(inv) ? inv : []);
+  };
   useEffect(() => { cargar(); }, []);
 
   const guardar = async () => {
     const cuerpo = { nombre: form.nombre, descripcion: form.descripcion, precio: +form.precio, categoria: form.categoria, imagen: form.imagen, disponible: form.disponible ?? true };
     if (form.id) await db("platos", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("platos", { metodo: "POST", cuerpo: { ...cuerpo, vendidos: 0 } });
-    toast("✅ Guardado");
-    setModal(null); cargar();
+    toast("✅ Guardado"); setModal(null); cargar();
   };
   const eliminar = async (id) => { await db("platos", { metodo: "DELETE", filtro: `?id=eq.${id}` }); toast("🗑️ Eliminado", C.warning); cargar(); };
   const toggle = async (p) => { await db("platos", { metodo: "PATCH", filtro: `?id=eq.${p.id}`, cuerpo: { disponible: !p.disponible } }); cargar(); };
 
+  const cargarReceta = async (plato) => {
+    const r = await db("recetas", { filtro: `?plato_id=eq.${plato.id}&order=ingrediente_nombre` });
+    setRecetaItems(Array.isArray(r) ? r : []);
+    setRecetaModal(plato);
+  };
+
+  const agregarIngrediente = async () => {
+    const ing = inventario.find((i) => i.id === formIng.ingrediente_id);
+    if (!ing || !formIng.cantidad) { toast("⚠️ Selecciona ingrediente y cantidad", C.warning); return; }
+    await db("recetas", { metodo: "POST", cuerpo: {
+      plato_id: recetaModal.id,
+      plato_nombre: recetaModal.nombre,
+      ingrediente_id: ing.id,
+      ingrediente_nombre: ing.nombre,
+      cantidad: +formIng.cantidad,
+      unidad: formIng.unidad || ing.unidad,
+    }});
+    setFormIng({ ingrediente_id: "", cantidad: "", unidad: "g" });
+    cargarReceta(recetaModal);
+    toast("✅ Ingrediente añadido a receta");
+  };
+
+  const eliminarIngrediente = async (id) => {
+    await db("recetas", { metodo: "DELETE", filtro: `?id=eq.${id}` });
+    cargarReceta(recetaModal);
+    toast("🗑️ Ingrediente eliminado", C.warning);
+  };
+
   if (!platos) return <Cargando />;
   const max = Math.max(...platos.map((p) => p.vendidos), 1);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -512,13 +573,16 @@ const ModuloPlatos = ({ usuario, toast }) => {
                 <div style={{ fontSize: 12, color: C.muted }}>{p.vendidos} vendidos · €{(p.precio * p.vendidos).toFixed(2)}</div>
               </div>
               <span style={{ fontWeight: 800, color: C.accent, fontSize: 16 }}>€{Number(p.precio).toFixed(2)}</span>
-              {puedeEditar(usuario.rol) && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Toggle checked={p.disponible} onChange={() => toggle(p)} />
-                  <Btn small variant="ghost" onClick={() => { setForm({ ...p }); setModal("e"); }}>Editar</Btn>
-                  {esAdmin(usuario.rol) && <Btn small variant="danger" onClick={() => eliminar(p.id)}>✕</Btn>}
-                </div>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Btn small variant="ghost" onClick={() => cargarReceta(p)}>🧪 Receta</Btn>
+                {puedeEditar(usuario.rol) && (
+                  <>
+                    <Toggle checked={p.disponible} onChange={() => toggle(p)} />
+                    <Btn small variant="ghost" onClick={() => { setForm({ ...p }); setModal("e"); }}>Editar</Btn>
+                    {esAdmin(usuario.rol) && <Btn small variant="danger" onClick={() => eliminar(p.id)}>✕</Btn>}
+                  </>
+                )}
+              </div>
             </div>
             <div style={{ background: C.soft, borderRadius: 6, height: 6 }}>
               <div style={{ height: "100%", borderRadius: 6, background: i === 0 ? C.gold : C.accent, width: `${(p.vendidos / max) * 100}%` }} />
@@ -526,6 +590,8 @@ const ModuloPlatos = ({ usuario, toast }) => {
           </div>
         ))}
       </div>
+
+      {/* Modal plato */}
       {modal && (
         <Modal title={modal === "n" ? "Nuevo plato" : "Editar plato"} onClose={() => setModal(null)}>
           <Input label="Nombre" value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
@@ -539,6 +605,53 @@ const ModuloPlatos = ({ usuario, toast }) => {
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
             <Btn onClick={guardar}>Guardar</Btn>
           </div>
+        </Modal>
+      )}
+
+      {/* Modal receta */}
+      {recetaModal && (
+        <Modal title={`🧪 Receta — ${recetaModal.nombre}`} subtitle="Ingredientes por unidad producida" onClose={() => setRecetaModal(null)}>
+          {/* Lista de ingredientes */}
+          <div style={{ marginBottom: 16 }}>
+            {recetaItems.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 24, color: C.faint, background: C.soft, borderRadius: 10 }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>🧂</div>
+                <div style={{ fontSize: 13 }}>Sin ingredientes aún. Añade el primero.</div>
+              </div>
+            ) : recetaItems.map((r) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.soft, borderRadius: 10, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>🧂</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.ingrediente_nombre}</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>{r.cantidad} {r.unidad} por unidad</div>
+                </div>
+                {puedeEditar(usuario.rol) && (
+                  <Btn small variant="danger" onClick={() => eliminarIngrediente(r.id)}>✕</Btn>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Añadir ingrediente */}
+          {puedeEditar(usuario.rol) && (
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Añadir ingrediente</div>
+              <Select label="Ingrediente" value={formIng.ingrediente_id} onChange={(e) => {
+                const ing = inventario.find(i => i.id === e.target.value);
+                setFormIng({ ...formIng, ingrediente_id: e.target.value, unidad: ing?.unidad || "g" });
+              }}>
+                <option value="">— Selecciona —</option>
+                {inventario.map((i) => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad})</option>)}
+              </Select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Input label="Cantidad" type="number" value={formIng.cantidad} onChange={(e) => setFormIng({ ...formIng, cantidad: e.target.value })} />
+                <Select label="Unidad" value={formIng.unidad} onChange={(e) => setFormIng({ ...formIng, unidad: e.target.value })}>
+                  {["g", "kg", "ml", "L", "und", "tsp", "tbsp"].map((u) => <option key={u}>{u}</option>)}
+                </Select>
+              </div>
+              <Btn full onClick={agregarIngrediente} icon="+">Añadir a receta</Btn>
+            </div>
+          )}
         </Modal>
       )}
     </div>
