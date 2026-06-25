@@ -52,6 +52,24 @@ const esAdmin = (r) => r === "administrador";
 const puedeEditar = (r) => ["administrador", "supervisor"].includes(r);
 
 // ─── NAVEGACIÓN ───────────────────────────────────────────────────────────────
+const ACCESO = {
+  dashboard:  ["administrador", "supervisor"],
+  mesas:      ["administrador", "supervisor", "cajero", "mesero", "cocinero"],
+  tickets:    ["administrador", "supervisor", "cajero", "mesero", "cocinero"],
+  cocina:     ["administrador", "supervisor", "mesero", "cocinero"],
+  reservas:   ["administrador", "supervisor"],
+  inventario: ["administrador", "supervisor", "mesero", "cocinero"],
+  platos:     ["administrador", "supervisor", "cajero", "mesero", "cocinero"],
+  mermas:     ["administrador", "supervisor"],
+  caja:       ["administrador", "supervisor", "cajero"],
+  reportes:   ["administrador", "supervisor"],
+  ia:         ["administrador", "supervisor", "cajero", "mesero", "cocinero"],
+  usuarios:   ["administrador"],
+  config:     ["administrador"],
+};
+
+const tieneAcceso = (id, rol) => (ACCESO[id] || []).includes(rol);
+
 const NAV = [
   { id: "dashboard", icon: "🏠", label: "Dashboard", grupo: "Operaciones" },
   { id: "mesas", icon: "🪑", label: "Mesas", grupo: "Operaciones" },
@@ -64,8 +82,8 @@ const NAV = [
   { id: "caja", icon: "💶", label: "Caja", grupo: "Gestión" },
   { id: "reportes", icon: "📊", label: "Reportes", grupo: "Gestión" },
   { id: "ia", icon: "🤖", label: "Asistente IA", grupo: "Sistema" },
-  { id: "usuarios", icon: "👥", label: "Usuarios", grupo: "Sistema", adminOnly: true },
-  { id: "config", icon: "⚙️", label: "Configuración", grupo: "Sistema", adminOnly: true },
+  { id: "usuarios", icon: "👥", label: "Usuarios", grupo: "Sistema" },
+  { id: "config", icon: "⚙️", label: "Configuración", grupo: "Sistema" },
 ];
 
 // ─── ATOMS ────────────────────────────────────────────────────────────────────
@@ -2302,12 +2320,21 @@ export default function App() {
 
   if (!usuario) return <Login onLogin={setUsuario} />;
 
-  const navVisible = NAV.filter((n) => !n.adminOnly || esAdmin(usuario.rol));
+  const navVisible = NAV.filter((n) => tieneAcceso(n.id, usuario.rol));
   const grupos = [...new Set(navVisible.map((n) => n.grupo))];
   const rolActual = ROLES[usuario.rol];
   const navActual = NAV.find((n) => n.id === tab);
 
+  const SinAcceso = () => (
+    <div style={{ textAlign: "center", padding: 80, color: C.faint }}>
+      <div style={{ fontSize: 56, marginBottom: 16 }}>🔒</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 8 }}>Acceso restringido</div>
+      <div style={{ fontSize: 14, color: C.muted }}>Tu rol <strong>{rolActual?.label}</strong> no tiene permisos para ver esta sección.</div>
+    </div>
+  );
+
   const render = () => {
+    if (!tieneAcceso(tab, usuario.rol)) return <SinAcceso />;
     switch (tab) {
       case "dashboard": return <Dashboard usuario={usuario} />;
       case "inventario": return <ModuloInventario usuario={usuario} toast={mostrarToast} />;
