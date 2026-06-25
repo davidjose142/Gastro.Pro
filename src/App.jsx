@@ -279,56 +279,137 @@ const Dashboard = ({ usuario }) => {
 //  INVENTARIO
 // ═══════════════════════════════════════════════════════════════════════════════
 const ModuloInventario = ({ usuario, toast }) => {
+  const [tab, setTab] = useState("ingredientes");
   const [items, setItems] = useState(null);
+  const [productos, setProductos] = useState(null);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
 
-  const cargar = async () => setItems(await db("inventario", { filtro: "?order=nombre" }) || []);
+  const cargar = async () => {
+    const [inv, prod] = await Promise.all([
+      db("inventario", { filtro: "?order=nombre" }),
+      db("productos_stock", { filtro: "?order=nombre" }),
+    ]);
+    setItems(Array.isArray(inv) ? inv : []);
+    setProductos(Array.isArray(prod) ? prod : []);
+  };
   useEffect(() => { cargar(); }, []);
 
-  const guardar = async () => {
+  // ── Ingredientes CRUD ──
+  const guardarIngrediente = async () => {
     const cuerpo = { nombre: form.nombre, cantidad: +form.cantidad, unidad: form.unidad, minimo: +form.minimo, categoria: form.categoria };
     if (form.id) await db("inventario", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("inventario", { metodo: "POST", cuerpo });
-    toast("✅ Guardado en base de datos");
-    setModal(null); cargar();
+    toast("✅ Guardado"); setModal(null); cargar();
+  };
+  const eliminarIngrediente = async (id) => { await db("inventario", { metodo: "DELETE", filtro: `?id=eq.${id}` }); toast("🗑️ Eliminado", C.warning); cargar(); };
+
+  // ── Productos CRUD ──
+  const guardarProducto = async () => {
+    const cuerpo = { nombre: form.nombre, categoria: form.categoria || "General", stock_actual: +form.stock_actual, stock_minimo: +form.stock_minimo, unidad: form.unidad || "und", precio_coste: +form.precio_coste || 0, imagen: form.imagen || "📦" };
+    if (form.id) await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
+    else await db("productos_stock", { metodo: "POST", cuerpo });
+    toast("✅ Guardado"); setModal(null); cargar();
+  };
+  const eliminarProducto = async (id) => { await db("productos_stock", { metodo: "DELETE", filtro: `?id=eq.${id}` }); toast("🗑️ Eliminado", C.warning); cargar(); };
+  const entradaStock = async (producto, cantidad) => {
+    const nuevoStock = (producto.stock_actual || 0) + cantidad;
+    await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${producto.id}`, cuerpo: { stock_actual: nuevoStock } });
+    toast(`✅ +${cantidad} ${producto.unidad} añadidos a ${producto.nombre}`); cargar();
   };
 
-  const eliminar = async (id) => { await db("inventario", { metodo: "DELETE", filtro: `?id=eq.${id}` }); toast("🗑️ Eliminado", C.warning); cargar(); };
-
   const st = (i) => i.cantidad <= 0 ? { l: "Agotado", c: C.danger } : i.cantidad <= i.minimo ? { l: "Crítico", c: C.danger } : i.cantidad <= i.minimo * 2 ? { l: "Bajo", c: C.warning } : { l: "OK", c: C.success };
+  const stProd = (p) => p.stock_actual <= 0 ? { l: "Agotado", c: C.danger } : p.stock_actual <= p.stock_minimo ? { l: "Bajo", c: C.warning } : { l: "OK", c: C.success };
 
-  if (!items) return <Cargando />;
+  if (!items || !productos) return <Cargando />;
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>📦 Inventario</h2>
-        {puedeEditar(usuario.rol) && <Btn onClick={() => { setForm({ nombre: "", cantidad: "", unidad: "kg", minimo: "", categoria: "Secos" }); setModal("n"); }} icon="+">Añadir</Btn>}
+        {puedeEditar(usuario.rol) && (
+          <Btn onClick={() => {
+            if (tab === "ingredientes") setForm({ nombre: "", cantidad: "", unidad: "kg", minimo: "", categoria: "Secos" });
+            else setForm({ nombre: "", categoria: "General", stock_actual: "", stock_minimo: "5", unidad: "und", precio_coste: "", imagen: "📦" });
+            setModal("n");
+          }} icon="+">{tab === "ingredientes" ? "Añadir ingrediente" : "Añadir producto"}</Btn>
+        )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {items.map((item) => {
-          const s = st(item);
-          return (
-            <div key={item.id} style={{ background: C.card, border: `1px solid ${item.cantidad <= item.minimo ? s.c + "40" : C.border}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{item.nombre}</div>
-                <div style={{ fontSize: 11, color: C.faint }}>{item.categoria}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontWeight: 800, color: C.text }}>{item.cantidad} <span style={{ color: C.faint, fontSize: 12 }}>{item.unidad}</span></div>
-                <div style={{ fontSize: 11, color: s.c, fontWeight: 700 }}>{s.l}</div>
-              </div>
-              {puedeEditar(usuario.rol) && (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Btn small variant="ghost" onClick={() => { setForm({ ...item }); setModal("e"); }}>Editar</Btn>
-                  {esAdmin(usuario.rol) && <Btn small variant="danger" onClick={() => eliminar(item.id)}>✕</Btn>}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 6, background: C.soft, borderRadius: 12, padding: 4, marginBottom: 18, width: "fit-content" }}>
+        {[{ id: "ingredientes", label: "🧂 Ingredientes" }, { id: "productos", label: "📦 Productos terminados" }].map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            background: tab === t.id ? C.accent : "transparent", color: tab === t.id ? "#fff" : C.muted,
+            border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* INGREDIENTES */}
+      {tab === "ingredientes" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.length === 0 && <div style={{ textAlign: "center", padding: 40, color: C.faint }}>Sin ingredientes registrados</div>}
+          {items.map((item) => {
+            const s = st(item);
+            return (
+              <div key={item.id} style={{ background: C.card, border: `1px solid ${item.cantidad <= item.minimo ? s.c + "40" : C.border}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{item.nombre}</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>{item.categoria}</div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {modal && (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, color: C.text }}>{item.cantidad} <span style={{ color: C.faint, fontSize: 12 }}>{item.unidad}</span></div>
+                  <div style={{ fontSize: 11, color: s.c, fontWeight: 700 }}>{s.l}</div>
+                </div>
+                {puedeEditar(usuario.rol) && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Btn small variant="ghost" onClick={() => { setForm({ ...item }); setModal("e"); }}>Editar</Btn>
+                    {esAdmin(usuario.rol) && <Btn small variant="danger" onClick={() => eliminarIngrediente(item.id)}>✕</Btn>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* PRODUCTOS TERMINADOS */}
+      {tab === "productos" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {productos.length === 0 && <div style={{ textAlign: "center", padding: 40, color: C.faint }}>Sin productos registrados</div>}
+          {productos.map((p) => {
+            const s = stProd(p);
+            return (
+              <div key={p.id} style={{ background: C.card, border: `2px solid ${p.stock_actual <= p.stock_minimo ? s.c + "50" : C.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+                <span style={{ fontSize: 28 }}>{p.imagen}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>{p.nombre}</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>{p.categoria} · Mín: {p.stock_minimo} {p.unidad}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: p.stock_actual <= 0 ? C.danger : p.stock_actual <= p.stock_minimo ? C.warning : C.success }}>{p.stock_actual}</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>{p.unidad}</div>
+                </div>
+                <div style={{ fontSize: 11, color: s.c, fontWeight: 700, minWidth: 50, textAlign: "center", background: s.c + "15", borderRadius: 8, padding: "4px 8px" }}>{s.l}</div>
+                {puedeEditar(usuario.rol) && (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button onClick={() => {
+                      const qty = parseInt(prompt(`¿Cuántas unidades añadir a ${p.nombre}?`));
+                      if (!isNaN(qty) && qty > 0) entradaStock(p, qty);
+                    }} style={{ background: C.successLight, border: `1px solid ${C.success}40`, color: C.success, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Entrada</button>
+                    <Btn small variant="ghost" onClick={() => { setForm({ ...p }); setModal("ep"); }}>Editar</Btn>
+                    {esAdmin(usuario.rol) && <Btn small variant="danger" onClick={() => eliminarProducto(p.id)}>✕</Btn>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal Ingrediente */}
+      {modal && (modal === "n" || modal === "e") && tab === "ingredientes" && (
         <Modal title={modal === "n" ? "Nuevo ingrediente" : "Editar ingrediente"} onClose={() => setModal(null)}>
           <Input label="Nombre" value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -339,7 +420,30 @@ const ModuloInventario = ({ usuario, toast }) => {
           <Select label="Categoría" value={form.categoria || "Secos"} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>{["Secos", "Frescos", "Lácteos", "Repostería", "Aromas", "Condimentos", "Bebidas"].map((c) => <option key={c}>{c}</option>)}</Select>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
-            <Btn onClick={guardar}>Guardar</Btn>
+            <Btn onClick={guardarIngrediente}>Guardar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal Producto */}
+      {modal && (modal === "n" || modal === "ep") && tab === "productos" && (
+        <Modal title={modal === "n" ? "Nuevo producto" : "Editar producto"} onClose={() => setModal(null)}>
+          <div style={{ display: "grid", gridTemplateColumns: "60px 1fr", gap: 12 }}>
+            <Input label="Emoji" value={form.imagen || "📦"} onChange={(e) => setForm({ ...form, imagen: e.target.value })} />
+            <Input label="Nombre del producto" value={form.nombre || ""} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Input label="Stock actual" type="number" value={form.stock_actual || ""} onChange={(e) => setForm({ ...form, stock_actual: e.target.value })} />
+            <Input label="Stock mínimo" type="number" value={form.stock_minimo || ""} onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })} />
+            <Select label="Unidad" value={form.unidad || "und"} onChange={(e) => setForm({ ...form, unidad: e.target.value })}>{["und", "kg", "g", "L", "ml", "porciones"].map((u) => <option key={u}>{u}</option>)}</Select>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Select label="Categoría" value={form.categoria || "General"} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>{["General", "Panadería", "Repostería", "Postres", "Bebidas", "Salados"].map((c) => <option key={c}>{c}</option>)}</Select>
+            <Input label="Coste unitario €" type="number" value={form.precio_coste || ""} onChange={(e) => setForm({ ...form, precio_coste: e.target.value })} />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+            <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
+            <Btn onClick={guardarProducto}>Guardar</Btn>
           </div>
         </Modal>
       )}
@@ -591,6 +695,14 @@ const ModuloMesas = ({ usuario, toast }) => {
     toast(`✅ Pedido enviado a cocina · Mesa ${mesa.numero} · €${total.toFixed(2)}`);
   };
   const añadir = (plato) => {
+    const prod = productosStock.find((p) => p.nombre.toLowerCase() === plato.nombre.toLowerCase());
+    if (prod) {
+      const enCarritoQty = carrito.find((i) => i.id === plato.id)?.qty || 0;
+      if (prod.stock_actual - enCarritoQty <= 0 && usuario.rol !== "administrador") {
+        toast(`🔴 ${plato.nombre} está agotado en stock`, C.danger);
+        return;
+      }
+    }
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
@@ -734,14 +846,17 @@ const ModuloTickets = ({ usuario, toast }) => {
   const [mesaInfo, setMesaInfo] = useState(null);
   const [catActiva, setCatActiva] = useState("Todos");
   const [modalCobro, setModalCobro] = useState(false);
+  const [productosStock, setProductosStock] = useState([]);
 
   const cargar = async () => {
-    const [p, t] = await Promise.all([
+    const [p, t, ps] = await Promise.all([
       db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
       db("tickets", { filtro: "?order=created_at.desc&limit=50" }),
+      db("productos_stock", { filtro: "?order=nombre" }),
     ]);
     setPlatos(p || []);
     setTickets(t || []);
+    setProductosStock(Array.isArray(ps) ? ps : []);
   };
   useEffect(() => { cargar(); }, []);
 
@@ -773,6 +888,14 @@ const ModuloTickets = ({ usuario, toast }) => {
   const platosFiltrados = catActiva === "Todos" ? platos : platos.filter((p) => p.categoria === catActiva);
 
   const añadir = (plato) => {
+    const prod = productosStock.find((p) => p.nombre.toLowerCase() === plato.nombre.toLowerCase());
+    if (prod) {
+      const enCarritoQty = carrito.find((i) => i.id === plato.id)?.qty || 0;
+      if (prod.stock_actual - enCarritoQty <= 0 && usuario.rol !== "administrador") {
+        toast(`🔴 ${plato.nombre} está agotado en stock`, C.danger);
+        return;
+      }
+    }
     const existe = carrito.find((i) => i.id === plato.id);
     if (existe) setCarrito(carrito.map((i) => i.id === plato.id ? { ...i, qty: i.qty + 1 } : i));
     else setCarrito([...carrito, { ...plato, qty: 1 }]);
@@ -813,7 +936,41 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
       }});
     }
 
-  setCarrito([]);
+  // 5. Descuenta stock de productos terminados
+    const productosDB = await db("productos_stock", { filtro: "?order=nombre" });
+    if (Array.isArray(productosDB)) {
+      for (const item of carrito) {
+        const prod = productosDB.find((p) => p.nombre.toLowerCase() === item.nombre.toLowerCase());
+        if (prod) {
+          const nuevoStock = Math.max(0, prod.stock_actual - item.qty);
+          await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${prod.id}`, cuerpo: { stock_actual: nuevoStock } });
+          if (nuevoStock === 0) {
+            toast(`🔴 ${prod.nombre} agotado — reponer stock`, C.danger);
+          } else if (nuevoStock <= prod.stock_minimo) {
+            toast(`⚠️ Stock bajo: ${prod.nombre} — quedan ${nuevoStock} ${prod.unidad}`, C.warning);
+          }
+        }
+      }
+    }
+
+  // 5. Descuenta stock de productos terminados
+    const productosDB = await db("productos_stock", { filtro: "?order=nombre" });
+    if (Array.isArray(productosDB)) {
+      for (const item of carrito) {
+        const prod = productosDB.find((p) => p.nombre.toLowerCase() === item.nombre.toLowerCase());
+        if (prod) {
+          const nuevoStock = Math.max(0, prod.stock_actual - item.qty);
+          await db("productos_stock", { metodo: "PATCH", filtro: `?id=eq.${prod.id}`, cuerpo: { stock_actual: nuevoStock } });
+          if (nuevoStock === 0) {
+            toast(`🔴 ${prod.nombre} agotado — reponer stock`, C.danger);
+          } else if (nuevoStock <= prod.stock_minimo) {
+            toast(`⚠️ Stock bajo: ${prod.nombre} — quedan ${nuevoStock} ${prod.unidad}`, C.warning);
+          }
+        }
+      }
+    }
+
+    setCarrito([]);
     setMesaInfo(null);
     setMesaActual("");
     setModalCobro(false);
@@ -879,16 +1036,23 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
               {platosFiltrados.map((plato) => {
                 const enCarrito = carrito.find((i) => i.id === plato.id);
+                const prod = productosStock.find((p) => p.nombre.toLowerCase() === plato.nombre.toLowerCase());
+                const agotado = prod && prod.stock_actual <= 0 && usuario.rol !== "administrador";
+                const stockBajo = prod && prod.stock_actual > 0 && prod.stock_actual <= prod.stock_minimo;
                 return (
-                  <button key={plato.id} onClick={() => añadir(plato)} style={{
-                    background: enCarrito ? C.accentLight : C.card, border: `2px solid ${enCarrito ? C.accent : C.border}`,
-                    borderRadius: 14, padding: "14px 10px", cursor: "pointer", textAlign: "center", position: "relative",
+                  <button key={plato.id} onClick={() => !agotado && añadir(plato)} style={{
+                    background: agotado ? C.soft : enCarrito ? C.accentLight : C.card,
+                    border: `2px solid ${agotado ? C.danger + "40" : enCarrito ? C.accent : C.border}`,
+                    borderRadius: 14, padding: "14px 10px", cursor: agotado ? "not-allowed" : "pointer",
+                    textAlign: "center", position: "relative", opacity: agotado ? 0.6 : 1,
                     boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
                   }}>
-                    {enCarrito && <div style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: "50%", background: C.accent, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{enCarrito.qty}</div>}
+                    {agotado && <div style={{ position: "absolute", top: 6, right: 6, fontSize: 9, background: C.danger, color: "#fff", borderRadius: 5, padding: "2px 5px", fontWeight: 700 }}>AGOTADO</div>}
+                    {stockBajo && !agotado && <div style={{ position: "absolute", top: 6, left: 6, fontSize: 9, background: C.warning, color: "#fff", borderRadius: 5, padding: "2px 4px", fontWeight: 700 }}>⚠️ {prod.stock_actual}</div>}
+                    {enCarrito && !agotado && <div style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: "50%", background: C.accent, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{enCarrito.qty}</div>}
                     <div style={{ fontSize: 26, marginBottom: 6 }}>{plato.imagen}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.3, marginBottom: 4 }}>{plato.nombre}</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: C.accent }}>€{Number(plato.precio).toFixed(2)}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: agotado ? C.faint : C.text, lineHeight: 1.3, marginBottom: 4 }}>{plato.nombre}</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: agotado ? C.faint : C.accent }}>€{Number(plato.precio).toFixed(2)}</div>
                   </button>
                 );
               })}
