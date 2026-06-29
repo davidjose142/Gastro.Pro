@@ -40,6 +40,25 @@ const C = {
   info: "#0ea5e9", purple: "#8b5cf6",
   text: "#1a1a14", muted: "#6b6560", faint: "#9a948e",
 };
+// ─── SEGURIDAD ────────────────────────────────────────────────────────────────
+const hashPassword = async (password) => {
+  const salt = crypto.randomUUID().replace(/-/g, "");
+  const encoder = new TextEncoder();
+  const data = encoder.encode(salt + password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `sha256:${salt}:${hashHex}`;
+};
+
+const verifyPassword = async (password, stored) => {
+  if (!stored.startsWith("sha256:")) return password === stored;
+  const [, salt, hash] = stored.split(":");
+  const encoder = new TextEncoder();
+  const data = encoder.encode(salt + password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashHex === hash;
+};
 // ─── ROLES ────────────────────────────────────────────────────────────────────
 const ROLES = {
   administrador: { label: "Administrador", color: C.accent, icono: "👑" },
@@ -173,8 +192,11 @@ const Login = ({ onLogin }) => {
     if (!email.trim()) return;
     setCargando(true); setError("");
     const usuarios = await db("usuarios", { filtro: `?email=eq.${encodeURIComponent(email)}&activo=eq.true` });
-    if (usuarios?.length > 0) onLogin(usuarios[0]);
-    else setError("Usuario no encontrado o inactivo");
+    if (usuarios?.length > 0) {
+      const ok = await verifyPassword(password, usuarios[0].password);
+      if (ok) onLogin(usuarios[0]);
+      else setError("Contraseña incorrecta");
+    } else setError("Usuario no encontrado o inactivo");
     setCargando(false);
   };
 
@@ -685,6 +707,14 @@ const ModuloUsuarios = ({ usuario, toast }) => {
 
   const guardar = async () => {
     const avatar = form.nombre?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
+    if (form.password) form.password = await hashPassword(form.password);
     const cuerpo = { nombre: form.nombre, email: form.email, rol: form.rol, activo: form.activo ?? true, avatar };
     if (form.id) await db("usuarios", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("usuarios", { metodo: "POST", cuerpo });
