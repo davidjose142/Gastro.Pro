@@ -708,13 +708,6 @@ const ModuloUsuarios = ({ usuario, toast }) => {
   const guardar = async () => {
     const avatar = form.nombre?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
-    if (form.password) form.password = await hashPassword(form.password);
     const cuerpo = { nombre: form.nombre, email: form.email, rol: form.rol, activo: form.activo ?? true, avatar };
     if (form.id) await db("usuarios", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("usuarios", { metodo: "POST", cuerpo });
@@ -766,6 +759,7 @@ const ModuloUsuarios = ({ usuario, toast }) => {
             {form.rol === "cocinero" && "👨‍🍳 Ve y edita inventario"}
             {form.rol === "mesero" && "🍽️ Toma comandas y ve la carta"}
           </div>
+          <Input label="Nueva contraseña (dejar vacío para no cambiar)" type="password" placeholder="••••••••" value={form.password || ""} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
             <Btn onClick={guardar} disabled={!form.nombre || !form.email}>Guardar</Btn>
