@@ -185,11 +185,12 @@ const KPICard = ({ icon, label, value, sub, color = C.accent }) => (
 // ═══════════════════════════════════════════════════════════════════════════════
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
 
   const entrar = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || !password.trim()) return;
     setCargando(true); setError("");
     const usuarios = await db("usuarios", { filtro: `?email=eq.${encodeURIComponent(email)}&activo=eq.true` });
     if (usuarios?.length > 0) {
@@ -219,8 +220,7 @@ const Login = ({ onLogin }) => {
 </div>
 <h1 style={{ margin: "0 0 4px", fontSize: 30, fontWeight: 700, color: C.text, letterSpacing: 4, fontFamily: "'Cinzel', serif" }}>CUCHARAL</h1>
 <p style={{ margin: "0 0 32px", color: C.muted, fontSize: 13, letterSpacing: 2, fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>Software para restaurantes</p>
-        <Input label="Tu correo electrónico" type="email" placeholder="correo@restaurante.es" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
-        {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
+<Input label="Tu correo electrónico" type="email" placeholder="correo@restaurante.es" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && entrar()} /><Input label="Contraseña" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && entrar()} />        {error && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
         <Btn full onClick={entrar} disabled={cargando}>{cargando ? "Verificando..." : "Entrar al sistema"}</Btn>
         <div style={{ marginTop: 24, fontSize: 11, color: C.faint }}>Demo: davidjose142@gmail.com</div>
       </div>
