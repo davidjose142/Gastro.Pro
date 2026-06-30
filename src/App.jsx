@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  CUCHARAL — SISTEMA COMPLETO DE GESTIÓN HOTELERA
@@ -2607,6 +2607,116 @@ const ModuloMermas = ({ usuario, toast }) => {
     </div>
   );
 };
+const useNotificaciones = (usuario) => {
+  const [notis, setNotis] = useState([]);
+  const vistosRef = useRef({ comandas: new Set(), stockBajo: new Set() });
+  const primeraVezRef = useRef(true);
+
+  const sonido = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(); osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {}
+  };
+
+  const agregar = (noti) => {
+    setNotis((prev) => [{ id: Date.now() + Math.random(), leida: false, hora: new Date(), ...noti }, ...prev].slice(0, 30));
+    sonido();
+  };
+
+  useEffect(() => {
+    if (!usuario) return;
+    const verificar = async () => {
+      const esCocina = ["administrador", "supervisor", "cocinero"].includes(usuario.rol);
+      const esMesero = ["administrador", "supervisor", "mesero"].includes(usuario.rol);
+      const esStock = ["administrador", "supervisor"].includes(usuario.rol);
+
+      const [comandas, stock] = await Promise.all([
+        db("comandas", { filtro: "?order=created_at.desc&limit=30" }),
+        esStock ? db("productos_stock", { filtro: "?order=nombre" }) : Promise.resolve([]),
+      ]);
+
+      if (Array.isArray(comandas)) {
+        comandas.forEach((c) => {
+          const yaVisto = vistosRef.current.comandas.has(c.id + "_" + c.estado);
+          if (yaVisto) return;
+          vistosRef.current.comandas.add(c.id + "_" + c.estado);
+          if (primeraVezRef.current) return;
+          if (c.estado === "nuevo" && esCocina) {
+            agregar({ tipo: "cocina", icono: "🍳", titulo: `Nueva comanda · Mesa ${c.mesa}`, msg: `#${c.codigo} · ${(c.items || []).length} items` });
+          }
+          if (c.estado === "listo" && esMesero) {
+            agregar({ tipo: "mesero", icono: "🔔", titulo: `Lista para servir · Mesa ${c.mesa}`, msg: `#${c.codigo} está lista en cocina` });
+          }
+        });
+      }
+
+      if (Array.isArray(stock)) {
+        stock.forEach((p) => {
+          const bajo = p.stock_actual <= p.stock_minimo;
+          const clave = p.id;
+          if (bajo && !vistosRef.current.stockBajo.has(clave)) {
+            vistosRef.current.stockBajo.add(clave);
+            if (!primeraVezRef.current) {
+              agregar({ tipo: "stock", icono: p.stock_actual <= 0 ? "🔴" : "⚠️", titulo: p.stock_actual <= 0 ? `Agotado: ${p.nombre}` : `Stock bajo: ${p.nombre}`, msg: `Quedan ${p.stock_actual} ${p.unidad}` });
+            }
+          } else if (!bajo && vistosRef.current.stockBajo.has(clave)) {
+            vistosRef.current.stockBajo.delete(clave);
+          }
+        });
+      }
+
+      primeraVezRef.current = false;
+    };
+    verificar();
+    const intervalo = setInterval(verificar, 6000);
+    return () => clearInterval(intervalo);
+  }, [usuario]);
+
+  const marcarLeidas = () => setNotis((prev) => prev.map((n) => ({ ...n, leida: true })));
+  const noLeidas = notis.filter((n) => !n.leida).length;
+
+  return { notis, noLeidas, marcarLeidas };
+};
+
+const PanelNotificaciones = ({ notis, noLeidas, marcarLeidas }) => {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={() => { setAbierto(!abierto); if (!abierto) marcarLeidas(); }} style={{ position: "relative", background: C.soft, border: `1px solid ${C.border}`, borderRadius: 8, width: 36, height: 36, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        🔔
+        {noLeidas > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: C.danger, color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 9, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{noLeidas}</span>}
+      </button>
+      {abierto && (
+        <>
+          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{ position: "absolute", top: 44, right: 0, width: 320, maxHeight: 420, overflowY: "auto", background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: "0 8px 24px rgba(15,23,42,0.15)", zIndex: 50 }}>
+            <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, fontSize: 13, fontWeight: 800, color: C.text }}>Notificaciones</div>
+            {notis.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center", color: C.faint, fontSize: 13 }}>Sin notificaciones aún</div>
+            ) : notis.map((n) => (
+              <div key={n.id} style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>{n.icono}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{n.titulo}</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{n.msg}</div>
+                  <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>{n.hora.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [usuario, setUsuario] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -2614,6 +2724,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   const mostrarToast = (msg, color = C.success) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3000); };
+  const { notis, noLeidas, marcarLeidas } = useNotificaciones(usuario);
 
   if (!usuario) return <Login onLogin={setUsuario} />;
 
@@ -2697,6 +2808,7 @@ export default function App() {
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: C.text }}>{navActual?.icon} {navActual?.label}</h2>
           <div style={{ flex: 1 }} />
           <div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>{new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
+          <PanelNotificaciones notis={notis} noLeidas={noLeidas} marcarLeidas={marcarLeidas} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.accentLight, border: `1px solid ${C.accent}25`, borderRadius: 10, padding: "6px 12px" }}>
             <Avatar initials={usuario.avatar} color={rolActual?.color} size={26} online />
             <div>
