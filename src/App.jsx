@@ -1149,6 +1149,8 @@ const ModuloMesas = ({ usuario, toast }) => {
   const [mesaInfo, setMesaInfo] = useState(null);
   const [catActiva, setCatActiva] = useState("Todos");
   const [modalCobro, setModalCobro] = useState(false);
+  const [propinaPct, setPropinaPct] = useState(0);
+  const [propinaManual, setPropinaManual] = useState("");
   const [productosStock, setProductosStock] = useState([]);
   const [cajaAbierta, setCajaAbierta] = useState(null); // null = aún no se sabe
 
