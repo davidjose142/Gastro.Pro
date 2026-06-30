@@ -1150,16 +1150,19 @@ const ModuloMesas = ({ usuario, toast }) => {
   const [catActiva, setCatActiva] = useState("Todos");
   const [modalCobro, setModalCobro] = useState(false);
   const [productosStock, setProductosStock] = useState([]);
+  const [cajaAbierta, setCajaAbierta] = useState(null); // null = aún no se sabe
 
   const cargar = async () => {
-    const [p, t, ps] = await Promise.all([
+    const [p, t, ps, sesiones] = await Promise.all([
       db("platos", { filtro: "?disponible=eq.true&order=nombre" }),
       db("tickets", { filtro: "?order=created_at.desc&limit=50" }),
       db("productos_stock", { filtro: "?order=nombre" }),
+      db("caja_sesiones", { filtro: "?estado=eq.abierta&order=created_at.desc&limit=1" }),
     ]);
     setPlatos(p || []);
     setTickets(t || []);
     setProductosStock(Array.isArray(ps) ? ps : []);
+    setCajaAbierta(Array.isArray(sesiones) && sesiones.length > 0);
   };
   useEffect(() => { cargar(); }, []);
 
@@ -1200,6 +1203,11 @@ const ModuloMesas = ({ usuario, toast }) => {
   const totalCarrito = carrito.reduce((s, i) => s + Number(i.precio) * i.qty, 0);
 
   const generarTicket = async (metodo) => {
+    if (!cajaAbierta) {
+      toast("🔒 No puedes cobrar: la caja está cerrada. Ábrela primero.", C.danger);
+      setModalCobro(false);
+      return;
+    }
     const codigo = `TK-${String(Math.floor(Math.random() * 9000) + 1000)}`;
     const items = carrito.map((i) => ({ nombre: i.nombre, precio: Number(i.precio), qty: i.qty }));
     const hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -1370,7 +1378,7 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
                   <span style={{ fontSize: 16, fontWeight: 800, color: C.text }}>TOTAL</span>
                   <span style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>€{totalCarrito.toFixed(2)}</span>
                 </div>
-                <Btn full variant="success" onClick={() => setModalCobro(true)} icon="💳">Cobrar</Btn>
+                <Btn full variant={cajaAbierta ? "success" : "secondary"} disabled={!cajaAbierta} onClick={() => cajaAbierta ? setModalCobro(true) : toast("🔒 La caja está cerrada. Ábrela antes de cobrar.", C.danger)} icon={cajaAbierta ? "💳" : "🔒"}>{cajaAbierta ? "Cobrar" : "Caja cerrada"}</Btn>
               </div>
             )}
           </div>
