@@ -2487,11 +2487,7 @@ const ModuloMermas = ({ usuario, toast }) => {
     cargar();
   };
  
-const entregar = async (comanda) => {
-    await db("comandas", { metodo: "PATCH", filtro: `?id=eq.${comanda.id}`, cuerpo: { estado: "entregado" } });
-    toast(`✅ ${comanda.codigo} entregado`, C.success);
-    cargar();
-  };
+
  
   if (!comandas) return <Cargando />;
  
@@ -2594,7 +2590,7 @@ const entregar = async (comanda) => {
  
                 <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
                   {comanda.estado === "listo" ? (
-                    <button onClick={() => entregar(comanda)} style={{ width: "100%", background: C.success, color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>✓ ENTREGADO — quitar</button>
+                    <div style={{ width: "100%", textAlign: "center", color: C.success, fontWeight: 900, fontSize: 13, padding: "10px" }}>✓ Lista — esperando cobro en TPV</div>
                   ) : (
                     <button onClick={() => marcarListo(comanda)} disabled={!todosListos} style={{
                       width: "100%", background: todosListos ? C.success : C.soft, color: todosListos ? "#fff" : C.faint,
