@@ -1465,6 +1465,76 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
           </div>
         </Modal>
       )}
+      {tabActivo === "propinas" && (() => {
+        const ticketsConPropina = tickets.filter((t) => Number(t.propina) > 0);
+        const totalPropinas = ticketsConPropina.reduce((s, t) => s + Number(t.propina), 0);
+        const propinasPorMesero = Object.values(ticketsConPropina.reduce((acc, t) => {
+          if (!acc[t.mesero]) acc[t.mesero] = { mesero: t.mesero, total: 0, count: 0 };
+          acc[t.mesero].total += Number(t.propina);
+          acc[t.mesero].count += 1;
+          return acc;
+        }, {})).sort((a, b) => b.total - a.total);
+        const propinasPorMetodo = Object.values(ticketsConPropina.reduce((acc, t) => {
+          const m = t.metodo || "otro";
+          if (!acc[m]) acc[m] = { metodo: m, total: 0, count: 0 };
+          acc[m].total += Number(t.propina);
+          acc[m].count += 1;
+          return acc;
+        }, {})).sort((a, b) => b.total - a.total);
+        return (
+          <div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
+              <KPICard icon="🤝" label="Total propinas" value={`€${totalPropinas.toFixed(2)}`} color={C.success} sub={`${ticketsConPropina.length} tickets`} />
+              <KPICard icon="📊" label="Propina media" value={`€${ticketsConPropina.length > 0 ? (totalPropinas / ticketsConPropina.length).toFixed(2) : "0.00"}`} color={C.accent} />
+              <KPICard icon="🏆" label="Mayor propina" value={`€${ticketsConPropina.length > 0 ? Math.max(...ticketsConPropina.map(t => Number(t.propina))).toFixed(2) : "0.00"}`} color={C.gold} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>👤 Por mesero</h3>
+                {propinasPorMesero.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin propinas registradas</div>
+                : propinasPorMesero.map((m, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{m.mesero}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{m.count} tickets</div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: C.success }}>€{m.total.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>💳 Por método de pago</h3>
+                {propinasPorMetodo.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin propinas registradas</div>
+                : propinasPorMetodo.map((m, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text, textTransform: "capitalize" }}>{m.metodo}</div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: C.accent }}>€{m.total.toFixed(2)}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{m.count} tickets</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>📋 Detalle de propinas</h3>
+              {ticketsConPropina.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: C.faint }}>Sin propinas registradas</div>
+              : ticketsConPropina.sort((a, b) => Number(b.propina) - Number(a.propina)).map((t) => (
+                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>#{t.codigo} · Mesa {t.mesa}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{t.mesero} · {t.metodo} · {t.hora}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: C.success }}>+€{Number(t.propina).toFixed(2)}</div>
+                    <div style={{ fontSize: 11, color: C.faint }}>Total: €{Number(t.total).toFixed(2)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -1615,6 +1685,7 @@ const ModuloCaja = ({ usuario, toast }) => {
         <KPICard icon="💶" label="Total ventas" value={`€${totalVentas.toFixed(2)}`} color={C.success} sub={`${ventas.length} ventas`} />
         <KPICard icon="💵" label="Efectivo" value={`€${totalEfectivo.toFixed(2)}`} color={C.gold} />
         <KPICard icon="💳" label="Tarjeta" value={`€${totalTarjeta.toFixed(2)}`} color={C.accent} />
+        <KPICard icon="🤝" label="Propinas" value={`€${movimientos.filter(m => m.tipo === "venta").reduce((s, m) => { const t = tickets.find(tk => m.descripcion.includes(tk.codigo)); return s + (t ? Number(t.propina || 0) : 0); }, 0).toFixed(2)}`} color={C.gold} />
         <KPICard icon="📤" label="Gastos" value={`€${totalGastos.toFixed(2)}`} color={C.danger} />
         <KPICard icon="🏦" label="Esperado en caja" value={`€${totalEsperado.toFixed(2)}`} color={C.success} />
       </div>
@@ -1852,6 +1923,7 @@ const ModuloReportes = ({ usuario, toast }) => {
     { id: "ventas", label: "💰 Ventas" },
     { id: "meseros", label: "👤 Meseros" },
     { id: "inventario", label: "📦 Inventario" },
+    { id: "propinas", label: "🤝 Propinas" },
   ];
 
   return (
