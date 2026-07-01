@@ -1203,6 +1203,8 @@ const ModuloMesas = ({ usuario, toast }) => {
   const quitar = (id) => setCarrito(carrito.map((i) => i.id === id ? { ...i, qty: i.qty - 1 } : i).filter((i) => i.qty > 0));
 
   const totalCarrito = carrito.reduce((s, i) => s + Number(i.precio) * i.qty, 0);
+  const montoPropina = propinaManual !== "" ? Number(propinaManual) || 0 : +(totalCarrito * (propinaPct / 100)).toFixed(2);
+  const totalConPropina = +(totalCarrito + montoPropina).toFixed(2);
 
   const generarTicket = async (metodo) => {
     if (!cajaAbierta) {
@@ -1217,7 +1219,7 @@ const ModuloMesas = ({ usuario, toast }) => {
     // 1. Genera el ticket
     await db("tickets", { metodo: "POST", cuerpo: {
       codigo, mesa: +mesaActual, zona: "Salón", mesero: usuario.nombre,
-      metodo, items, total: totalCarrito, hora,
+      metodo, items, total: totalConPropina, propina: montoPropina, hora,
     }});
 // 2. Elimina comandas activas de la mesa
 await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
@@ -1234,8 +1236,8 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
       await db("caja_movimientos", { metodo: "POST", cuerpo: {
         sesion_id: sesiones[0].id,
         tipo: "venta",
-        descripcion: `Ticket ${codigo} · Mesa ${mesaActual}`,
-        monto: totalCarrito,
+        descripcion: `Ticket ${codigo} · Mesa ${mesaActual}${montoPropina > 0 ? ` (incl. €${montoPropina.toFixed(2)} propina)` : ""}`,
+        monto: totalConPropina,
         metodo,
         hora,
       }});
@@ -1262,6 +1264,8 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
     setMesaInfo(null);
     setMesaActual("");
     setModalCobro(false);
+    setPropinaPct(0);
+    setPropinaManual("");
     toast(`✅ Ticket ${codigo} · Cocina avisada · Mesa ${mesaActual} liberada`);
     cargar();
     setVista("historial");
@@ -1419,10 +1423,32 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
       {/* Modal cobro */}
       {modalCobro && (
         <Modal title={`💳 Cobrar mesa ${mesaActual}`} subtitle="Selecciona el método de pago" onClose={() => setModalCobro(false)}>
-          <div style={{ textAlign: "center", marginBottom: 24 }}>
-            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Total a cobrar</div>
-            <div style={{ fontSize: 44, fontWeight: 900, color: C.text }}>€{totalCarrito.toFixed(2)}</div>
+          <div style={{ textAlign: "center", marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Subtotal</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.muted }}>€{totalCarrito.toFixed(2)}</div>
           </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, textAlign: "center" }}>Propina</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              {[0, 10, 15, 20].map((pct) => (
+                <button key={pct} onClick={() => { setPropinaPct(pct); setPropinaManual(""); }} style={{
+                  flex: 1, padding: "8px 4px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 800,
+                  background: propinaPct === pct && propinaManual === "" ? C.accent : C.soft,
+                  color: propinaPct === pct && propinaManual === "" ? "#fff" : C.muted,
+                  border: `1px solid ${propinaPct === pct && propinaManual === "" ? C.accent : C.border}`,
+                }}>{pct === 0 ? "Sin propina" : `${pct}%`}</button>
+              ))}
+            </div>
+            <Input placeholder="O escribe un monto en €" type="number" value={propinaManual} onChange={(e) => { setPropinaManual(e.target.value); setPropinaPct(0); }} />
+          </div>
+
+          <div style={{ textAlign: "center", marginBottom: 24, paddingTop: 14, borderTop: `2px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Total a cobrar</div>
+            <div style={{ fontSize: 44, fontWeight: 900, color: C.text }}>€{totalConPropina.toFixed(2)}</div>
+            {montoPropina > 0 && <div style={{ fontSize: 12, color: C.success, fontWeight: 700, marginTop: 2 }}>incluye €{montoPropina.toFixed(2)} de propina</div>}
+          </div>
+
           <div style={{ display: "flex", gap: 10 }}>
             {Object.entries(metodoPago).map(([key, m]) => (
               <button key={key} onClick={() => generarTicket(key)} style={{
