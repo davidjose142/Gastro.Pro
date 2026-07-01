@@ -1685,7 +1685,7 @@ const ModuloCaja = ({ usuario, toast }) => {
         <KPICard icon="💶" label="Total ventas" value={`€${totalVentas.toFixed(2)}`} color={C.success} sub={`${ventas.length} ventas`} />
         <KPICard icon="💵" label="Efectivo" value={`€${totalEfectivo.toFixed(2)}`} color={C.gold} />
         <KPICard icon="💳" label="Tarjeta" value={`€${totalTarjeta.toFixed(2)}`} color={C.accent} />
-        <KPICard icon="🤝" label="Propinas" value={`€${movimientos.filter(m => m.tipo === "venta").reduce((s, m) => { const t = tickets.find(tk => m.descripcion.includes(tk.codigo)); return s + (t ? Number(t.propina || 0) : 0); }, 0).toFixed(2)}`} color={C.gold} />
+        
         <KPICard icon="📤" label="Gastos" value={`€${totalGastos.toFixed(2)}`} color={C.danger} />
         <KPICard icon="🏦" label="Esperado en caja" value={`€${totalEsperado.toFixed(2)}`} color={C.success} />
       </div>
