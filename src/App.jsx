@@ -1465,7 +1465,7 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
           </div>
         </Modal>
       )}
-      {tabActivo === "propinas" && (() => {
+      {vistaReporte === "propinas" && (() => {
         const ticketsConPropina = tickets.filter((t) => Number(t.propina) > 0);
         const totalPropinas = ticketsConPropina.reduce((s, t) => s + Number(t.propina), 0);
         const propinasPorMesero = Object.values(ticketsConPropina.reduce((acc, t) => {
