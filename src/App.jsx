@@ -1553,6 +1553,7 @@ const ModuloCaja = ({ usuario, toast }) => {
   };
  
   const cerrarCaja = async () => {
+    console.log("Cerrando caja:", sesion?.id, "efectivo:", efectivoContado, "esperado:", totalEsperado);
     const diferencia = +efectivoContado - totalEsperado;
     await db("caja_sesiones", { metodo: "PATCH", filtro: `?id=eq.${sesion.id}`, cuerpo: {
       estado: "cerrada", hora_cierre: new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
