@@ -1479,17 +1479,23 @@ const ModuloCaja = ({ usuario, toast }) => {
   const [efectivoContado, setEfectivoContado] = useState("");
   const [formGasto, setFormGasto] = useState({ descripcion: "", monto: "" });
   const [procesando, setProcesando] = useState(false);
+  const [ticketsCaja, setTicketsCaja] = useState([]);
  
   const cargar = async () => {
     const sesiones = await db("caja_sesiones", { filtro: `?estado=eq.abierta&order=created_at.desc` });
     if (Array.isArray(sesiones) && sesiones.length > 0) {
       const s = sesiones[0];
       setSesion(s);
-      const movs = await db("caja_movimientos", { filtro: `?sesion_id=eq.${s.id}&order=created_at.desc` });
+      const [movs, tks] = await Promise.all([
+        db("caja_movimientos", { filtro: `?sesion_id=eq.${s.id}&order=created_at.desc` }),
+        db("tickets", { filtro: `?hora_apertura=gte.${s.hora_apertura}&order=created_at.desc&limit=200` }),
+      ]);
       setMovimientos(Array.isArray(movs) ? movs : []);
+      setTicketsCaja(Array.isArray(tks) ? tks : []);
     } else {
       setSesion(null);
       setMovimientos([]);
+      setTicketsCaja([]);
     }
   };
   useEffect(() => { cargar(); }, []);
@@ -1616,8 +1622,7 @@ const ModuloCaja = ({ usuario, toast }) => {
         <KPICard icon="💶" label="Total ventas" value={`€${totalVentas.toFixed(2)}`} color={C.success} sub={`${ventas.length} ventas`} />
         <KPICard icon="💵" label="Efectivo" value={`€${totalEfectivo.toFixed(2)}`} color={C.gold} />
         <KPICard icon="💳" label="Tarjeta" value={`€${totalTarjeta.toFixed(2)}`} color={C.accent} />
-        
-        <KPICard icon="📤" label="Gastos" value={`€${totalGastos.toFixed(2)}`} color={C.danger} />
+        <KPICard icon="🤝" label="Propinas" value={`€${ticketsCaja.reduce((s, t) => s + Number(t.propina || 0), 0).toFixed(2)}`} color={C.gold} sub={`${ticketsCaja.filter(t => Number(t.propina) > 0).length} tickets`} />
         <KPICard icon="🏦" label="Esperado en caja" value={`€${totalEsperado.toFixed(2)}`} color={C.success} />
       </div>
  
