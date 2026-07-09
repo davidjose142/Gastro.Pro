@@ -707,8 +707,13 @@ const ModuloUsuarios = ({ usuario, toast }) => {
 
   const guardar = async () => {
     const avatar = form.nombre?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-    if (form.password) form.password = await hashPassword(form.password);
     const cuerpo = { nombre: form.nombre, email: form.email, rol: form.rol, activo: form.activo ?? true, avatar };
+    if (form._pass && form._pass.trim() !== "") {
+      cuerpo.password = await hashPassword(form._pass.trim());
+    } else if (modal === "n") {
+      toast("⚠️ La contraseña es obligatoria para crear un usuario", C.danger);
+      return;
+    }
     if (form.id) await db("usuarios", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("usuarios", { metodo: "POST", cuerpo });
     toast("✅ Guardado");
