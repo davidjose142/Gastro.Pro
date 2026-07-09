@@ -714,6 +714,7 @@ const ModuloUsuarios = ({ usuario, toast }) => {
       toast("⚠️ La contraseña es obligatoria para crear un usuario", C.danger);
       return;
     }
+    console.log("Guardando usuario:", cuerpo);
     if (form.id) await db("usuarios", { metodo: "PATCH", filtro: `?id=eq.${form.id}`, cuerpo });
     else await db("usuarios", { metodo: "POST", cuerpo });
     toast("✅ Guardado");
