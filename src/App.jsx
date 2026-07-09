@@ -1488,12 +1488,10 @@ const ModuloCaja = ({ usuario, toast }) => {
       setSesion(s);
       const [movs, tks] = await Promise.all([
         db("caja_movimientos", { filtro: `?sesion_id=eq.${s.id}&order=created_at.desc` }),
-        db("tickets", { filtro: `?hora_apertura=gte.${s.hora_apertura}&order=created_at.desc&limit=200` }),
-      ]);
+db("tickets", { filtro: `?order=created_at.desc&limit=500` }),      ]);
       setMovimientos(Array.isArray(movs) ? movs : []);
       setTicketsCaja(Array.isArray(tks) ? tks : []);
-    } else {
-      setSesion(null);
+setTicketsCaja(Array.isArray(tks) ? tks.filter(t => Number(t.propina) > 0) : []);      setSesion(null);
       setMovimientos([]);
       setTicketsCaja([]);
     }
