@@ -394,63 +394,7 @@ const Dashboard = ({ usuario }) => {
     </div>
   );
 };
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: C.text }}>Hola, {usuario.nombre.split(" ")[0]} 👋</h1>
-        <p style={{ margin: "4px 0 0", color: C.muted, fontSize: 14 }}>{new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}</p>
-      </div>
-
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
-        <KPICard icon="💶" label="Ingresos acumulados" value={`€${ingresos.toFixed(0)}`} color={C.success} />
-        <KPICard icon="🍽️" label="Platos en carta" value={platos.length} color={C.accent} />
-        <KPICard icon="⚠️" label="Alertas de stock" value={alertas.length} color={alertas.length > 0 ? C.danger : C.success} sub={alertas.length > 0 ? "Requieren atención" : "Todo OK"} />
-        <KPICard icon="👥" label="Usuarios activos" value={usuarios.filter((u) => u.activo).length} color={C.purple} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-          <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>📊 Ventas de la semana</h3>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
-            {VENTAS_SEMANA.map((v, i) => (
-              <div key={v.dia} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                <div style={{ fontSize: 10, color: i === 6 ? C.accent : C.faint, fontWeight: 700 }}>€{v.v.toFixed(0)}</div>
-                <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: i === 6 ? C.accent : C.border, height: `${(v.v / maxSemana) * 100}px`, minHeight: 4, transition: "height .5s" }} />
-                <div style={{ fontSize: 11, color: i === 6 ? C.accent : C.faint, fontWeight: i === 6 ? 800 : 500 }}>{v.dia}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-          <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>🏆 Top platos</h3>
-          {platos.slice(0, 5).map((p, i) => (
-            <div key={p.id} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{["🥇", "🥈", "🥉", "4.", "5."][i]} {p.imagen} {p.nombre}</span>
-                <span style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{p.vendidos} uds.</span>
-              </div>
-              <div style={{ background: C.soft, borderRadius: 4, height: 5 }}>
-                <div style={{ height: "100%", borderRadius: 4, background: i === 0 ? C.gold : C.accent, width: `${(p.vendidos / maxV) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {alertas.length > 0 && (
-        <div style={{ background: C.card, border: `1px solid ${C.danger}30`, borderRadius: 16, padding: 22, marginTop: 16, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
-          <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.danger }}>⚠️ Alertas de stock</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-            {alertas.map((i) => (
-              <div key={i.id} style={{ background: C.dangerLight, borderRadius: 10, padding: "10px 14px" }}>
-                <div style={{ fontWeight: 700, color: C.text, fontSize: 13 }}>{i.nombre}</div>
-                <div style={{ fontSize: 12, color: C.danger }}>{i.cantidad} {i.unidad} · mín. {i.minimo} {i.unidad}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  INVENTARIO
