@@ -1159,46 +1159,51 @@ const ModuloMesas = ({ usuario, toast }) => {
               ))}
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Añadir al pedido</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {platos.map((p) => (
-                <button key={p.id} onClick={() => añadir(p)} style={{ background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 6px", cursor: "pointer", textAlign: "center" }}>
-                  <div style={{ fontSize: 22 }}>{p.imagen}</div>
-                  <div style={{ fontSize: 10, color: C.text, fontWeight: 600, marginTop: 3, lineHeight: 1.2 }}>{p.nombre}</div>
-                  <div style={{ fontSize: 12, color: C.accent, fontWeight: 800, marginTop: 2 }}>€{Number(p.precio).toFixed(2)}</div>
-                </button>
-              ))}
+          <div style={{ display: "flex", flex: 1, overflow: "hidden", gap: 0 }}>
+            {/* Carta - columna izquierda */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 14, borderRight: carrito.length > 0 ? `1px solid ${C.border}` : "none" }}>
+              <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Añadir al pedido</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {platos.map((p) => (
+                  <button key={p.id} onClick={() => añadir(p)} style={{ background: C.soft, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 6px", cursor: "pointer", textAlign: "center" }}>
+                    <div style={{ fontSize: 22 }}>{p.imagen}</div>
+                    <div style={{ fontSize: 10, color: C.text, fontWeight: 600, marginTop: 3, lineHeight: 1.2 }}>{p.nombre}</div>
+                    <div style={{ fontSize: 12, color: C.accent, fontWeight: 800, marginTop: 2 }}>€{Number(p.precio).toFixed(2)}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          {carrito.length > 0 && (
-            <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, background: C.accentLight }}>
-              {carrito.map((i) => (
-                <div key={i.id} style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{i.imagen} {i.nombre}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <button onClick={() => quitar(i.id)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.border, cursor: "pointer", fontSize: 12 }}>−</button>
-                      <span style={{ fontSize: 12, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{i.qty}</span>
-                      <button onClick={() => añadir(i)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 12 }}>+</button>
+            {/* Pedido actual - columna derecha */}
+            {carrito.length > 0 && (
+              <div style={{ width: 200, overflowY: "auto", padding: 14, background: C.accentLight, display: "flex", flexDirection: "column" }}>
+                <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Pedido</div>
+                {carrito.map((i) => (
+                  <div key={i.id} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: C.text, fontWeight: 600, flex: 1, marginRight: 4 }}>{i.imagen} {i.nombre}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => quitar(i.id)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.border, cursor: "pointer", fontSize: 12 }}>−</button>
+                        <span style={{ fontSize: 12, fontWeight: 700, minWidth: 14, textAlign: "center" }}>{i.qty}</span>
+                        <button onClick={() => añadir(i)} style={{ width: 20, height: 20, borderRadius: 5, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 12 }}>+</button>
+                      </div>
                     </div>
+                    <input
+                      type="text"
+                      placeholder="📝 Nota..."
+                      value={i.nota || ""}
+                      onChange={(e) => actualizarNota(i.id, e.target.value)}
+                      style={{
+                        width: "100%", fontSize: 10, padding: "4px 6px", borderRadius: 6,
+                        border: `1px solid ${i.nota ? C.warning : C.border}`,
+                        background: i.nota ? C.warningLight : "#fff",
+                        color: C.text, outline: "none", boxSizing: "border-box",
+                      }}
+                    />
                   </div>
-                  <input
-                    type="text"
-                    placeholder="📝 Nota (sin gluten, sin cebolla...)"
-                    value={i.nota || ""}
-                    onChange={(e) => actualizarNota(i.id, e.target.value)}
-                    style={{
-                      width: "100%", fontSize: 11, padding: "4px 8px", borderRadius: 6,
-                      border: `1px solid ${i.nota ? C.warning : C.border}`,
-                      background: i.nota ? C.warningLight : "#fff",
-                      color: C.text, outline: "none", boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ padding: "14px 16px", borderTop: `2px solid ${C.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Total nuevo</span>
