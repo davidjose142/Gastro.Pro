@@ -235,26 +235,165 @@ const Dashboard = ({ usuario }) => {
   const [datos, setDatos] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      const [platos, inventario, usuarios] = await Promise.all([
-        db("platos", { filtro: "?order=vendidos.desc" }),
-        db("inventario"),
-        db("usuarios"),
+    const cargar = async () => {
+      const hoy = new Date().toISOString().split("T")[0];
+      const hace7 = new Date(Date.now() - 6 * 86400000).toISOString().split("T")[0];
+      const [tickets, comandas, mesas, sesiones, platos, inventario] = await Promise.all([
+        db("tickets", { filtro: `?created_at=gte.${hace7}T00:00:00&order=created_at.desc&limit=500` }),
+        db("comandas", { filtro: "?order=created_at.desc&limit=50" }),
+        db("mesas", { filtro: "?order=numero" }),
+        db("caja_sesiones", { filtro: "?estado=eq.abierta&order=created_at.desc&limit=1" }),
+        db("platos", { filtro: "?order=vendidos.desc&limit=5" }),
+        db("inventario", { filtro: "?order=nombre" }),
       ]);
-      setDatos({ platos: platos || [], inventario: inventario || [], usuarios: usuarios || [] });
-    })();
+      setDatos({
+        tickets: Array.isArray(tickets) ? tickets : [],
+        comandas: Array.isArray(comandas) ? comandas : [],
+        mesas: Array.isArray(mesas) ? mesas : [],
+        sesion: Array.isArray(sesiones) && sesiones.length > 0 ? sesiones[0] : null,
+        platos: Array.isArray(platos) ? platos : [],
+        inventario: Array.isArray(inventario) ? inventario : [],
+      });
+    };
+    cargar();
+    const intervalo = setInterval(cargar, 30000);
+    return () => clearInterval(intervalo);
   }, []);
 
   if (!datos) return <Cargando />;
-  const { platos, inventario, usuarios } = datos;
-  const ingresos = platos.reduce((s, p) => s + p.precio * p.vendidos, 0);
-  const alertas = inventario.filter((i) => i.cantidad <= i.minimo);
-  const maxV = Math.max(...platos.map((p) => p.vendidos), 1);
+  const { tickets, comandas, mesas, sesion, platos, inventario } = datos;
 
-  const VENTAS_SEMANA = [312, 428, 356, 510, 687, 842, ingresos].map((v, i) => ({ dia: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Hoy"][i], v }));
-  const maxSemana = Math.max(...VENTAS_SEMANA.map((v) => v.v));
+  const hoy = new Date().toISOString().split("T")[0];
+  const ticketsHoy = tickets.filter(t => t.created_at?.startsWith(hoy));
+  const ventasHoy = ticketsHoy.reduce((s, t) => s + Number(t.total || 0), 0);
+  const propinasHoy = ticketsHoy.reduce((s, t) => s + Number(t.propina || 0), 0);
+  const mesasOcupadas = mesas.filter(m => m.estado === "ocupada").length;
+  const mesasLibres = mesas.filter(m => m.estado === "libre").length;
+  const comandasActivas = comandas.filter(c => c.estado !== "entregado");
+  const alertasStock = inventario.filter(i => Number(i.cantidad) <= Number(i.minimo));
+  const maxV = Math.max(...platos.map(p => p.vendidos), 1);
+
+  // Ventas por día últimos 7 días
+  const ventasSemana = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(Date.now() - (6 - i) * 86400000);
+    const key = d.toISOString().split("T")[0];
+    const label = d.toLocaleDateString("es-ES", { weekday: "short" });
+    const total = tickets.filter(t => t.created_at?.startsWith(key)).reduce((s, t) => s + Number(t.total || 0), 0);
+    return { label: label.charAt(0).toUpperCase() + label.slice(1, 3), total, esHoy: key === hoy };
+  });
+  const maxSemana = Math.max(...ventasSemana.map(v => v.total), 1);
 
   return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: C.text }}>Hola, {usuario.nombre.split(" ")[0]} 👋</h1>
+        <p style={{ margin: "4px 0 0", color: C.muted, fontSize: 14 }}>{new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })} · Centro de control</p>
+      </div>
+
+      {/* KPIs principales */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <KPICard icon="💶" label="Ventas hoy" value={`€${ventasHoy.toFixed(2)}`} color={C.success} sub={`${ticketsHoy.length} tickets`} />
+        <KPICard icon="🤝" label="Propinas hoy" value={`€${propinasHoy.toFixed(2)}`} color={C.gold} />
+        <KPICard icon="🍽️" label="Mesas ocupadas" value={`${mesasOcupadas}/${mesas.length}`} color={C.accent} sub={`${mesasLibres} libres`} />
+        <KPICard icon="🍳" label="Comandas activas" value={comandasActivas.length} color={comandasActivas.length > 0 ? C.warning : C.success} />
+        <KPICard icon="🏦" label="Caja" value={sesion ? "Abierta" : "Cerrada"} color={sesion ? C.success : C.danger} sub={sesion ? `Desde ${sesion.hora_apertura}` : "Sin turno activo"} />
+        <KPICard icon="⚠️" label="Alertas stock" value={alertasStock.length} color={alertasStock.length > 0 ? C.danger : C.success} sub={alertasStock.length > 0 ? "Requieren atención" : "Todo OK"} />
+      </div>
+
+      {/* Fila central */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, marginBottom: 16 }}>
+
+        {/* Gráfica ventas semana */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 800, color: C.text }}>📊 Ventas últimos 7 días</h3>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 110 }}>
+            {ventasSemana.map((v) => (
+              <div key={v.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ fontSize: 9, color: v.esHoy ? C.accent : C.faint, fontWeight: 700 }}>€{v.total.toFixed(0)}</div>
+                <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: v.esHoy ? C.accent : C.border, height: `${Math.max((v.total / maxSemana) * 100, 3)}px`, transition: "height .5s" }} />
+                <div style={{ fontSize: 11, color: v.esHoy ? C.accent : C.faint, fontWeight: v.esHoy ? 800 : 500 }}>{v.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Comandas activas */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.text }}>🍳 Comandas en curso</h3>
+          {comandasActivas.length === 0
+            ? <div style={{ textAlign: "center", padding: "30px 0", color: C.faint, fontSize: 13 }}>Sin comandas activas</div>
+            : comandasActivas.slice(0, 5).map(c => {
+              const mins = Math.floor((Date.now() - new Date(c.created_at).getTime()) / 60000);
+              const color = c.estado === "listo" ? C.success : mins >= 15 ? C.danger : mins >= 8 ? C.warning : C.accent;
+              return (
+                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Mesa {c.mesa} · #{c.codigo}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{c.mesero} · {(c.items || []).length} items</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color }}>{mins}'</div>
+                    <div style={{ fontSize: 10, color, fontWeight: 700 }}>{c.estado === "listo" ? "LISTO" : mins >= 15 ? "URGENTE" : "EN CURSO"}</div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
+      {/* Fila inferior */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+        {/* Top platos */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 800, color: C.text }}>🏆 Top platos</h3>
+          {platos.length === 0
+            ? <div style={{ textAlign: "center", padding: "20px 0", color: C.faint, fontSize: 13 }}>Sin datos aún</div>
+            : platos.map((p, i) => (
+              <div key={p.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{["🥇","🥈","🥉","4.","5."][i]} {p.nombre}</span>
+                  <span style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{p.vendidos} uds.</span>
+                </div>
+                <div style={{ background: C.soft, borderRadius: 4, height: 5 }}>
+                  <div style={{ height: "100%", borderRadius: 4, background: i === 0 ? C.gold : C.accent, width: `${(p.vendidos / maxV) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+        </div>
+
+        {/* Mesas en vivo */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 22 }}>
+          <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.text }}>🗺️ Mesas en vivo</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: 8 }}>
+            {mesas.map(m => (
+              <div key={m.id} style={{ background: m.estado === "ocupada" ? C.accentLight : C.soft, border: `2px solid ${m.estado === "ocupada" ? C.accent : C.border}`, borderRadius: 10, padding: "8px 4px", textAlign: "center" }}>
+                <div style={{ fontSize: 16 }}>{m.estado === "ocupada" ? "🔴" : "🟢"}</div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.text }}>M{m.numero}</div>
+                <div style={{ fontSize: 9, color: C.muted }}>{m.estado === "ocupada" ? "Ocup." : "Libre"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Alertas stock */}
+      {alertasStock.length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.danger}30`, borderRadius: 16, padding: 22, marginTop: 16 }}>
+          <h3 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 800, color: C.danger }}>⚠️ Alertas de stock</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+            {alertasStock.map(i => (
+              <div key={i.id} style={{ background: C.dangerLight, borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ fontWeight: 700, color: C.text, fontSize: 13 }}>{i.nombre}</div>
+                <div style={{ fontSize: 12, color: C.danger }}>{i.cantidad} {i.unidad} · mín. {i.minimo} {i.unidad}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
     <div>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: C.text }}>Hola, {usuario.nombre.split(" ")[0]} 👋</h1>
@@ -312,8 +451,6 @@ const Dashboard = ({ usuario }) => {
         </div>
       )}
     </div>
-  );
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  INVENTARIO
