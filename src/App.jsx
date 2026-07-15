@@ -765,10 +765,13 @@ const ModuloUsuarios = ({ usuario, toast }) => {
             {form.rol === "cocinero" && "👨‍🍳 Ve y edita inventario"}
             {form.rol === "mesero" && "🍽️ Toma comandas y ve la carta"}
           </div>
-          <Input label="Nueva contraseña (dejar vacío para no cambiar)" type="password" placeholder="••••••••" value={form.password || ""} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <div style={{ position: "relative" }}>
+            <Input label={modal === "n" ? "Contraseña" : "Nueva contraseña (dejar vacío para no cambiar)"} type={form._verPass ? "text" : "password"} placeholder="••••••••" value={form._pass || ""} onChange={(e) => setForm({ ...form, _pass: e.target.value })} />
+            <button onClick={() => setForm({ ...form, _verPass: !form._verPass })} style={{ position: "absolute", right: 12, top: 32, background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.muted }}>{form._verPass ? "🙈" : "👁️"}</button>
+          </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn variant="secondary" onClick={() => setModal(null)}>Cancelar</Btn>
-            <Btn onClick={guardar} disabled={!form.nombre || !form.email}>Guardar</Btn>
+            <Btn onClick={guardar} disabled={!form.nombre || !form.email || (modal === "n" && !form._pass)}>Guardar</Btn>
           </div>
         </Modal>
       )}
