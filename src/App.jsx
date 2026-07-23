@@ -183,6 +183,86 @@ const KPICard = ({ icon, label, value, sub, color = C.accent }) => (
 // ═══════════════════════════════════════════════════════════════════════════════
 //  LOGIN
 // ═══════════════════════════════════════════════════════════════════════════════
+const imprimirTicket = (ticket, metodo) => {
+  const mp = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", bizum: "📱 Bizum" };
+  const win = window.open("", "_blank", "width=400,height=600");
+  win.document.write(`
+    <html><head><title>Ticket ${ticket.codigo}</title>
+    <style>
+      body { font-family: 'Courier New', monospace; font-size: 13px; margin: 0; padding: 16px; width: 280px; }
+      .center { text-align: center; }
+      .bold { font-weight: bold; }
+      .big { font-size: 20px; font-weight: bold; }
+      .line { border-top: 1px dashed #000; margin: 8px 0; }
+      .row { display: flex; justify-content: space-between; margin: 3px 0; }
+      .total { font-size: 16px; font-weight: bold; }
+      .small { font-size: 11px; color: #555; }
+    </style></head>
+    <body>
+      <div class="center bold" style="font-size:18px; letter-spacing:3px;">CUCHARAL</div>
+      <div class="center small">Software para restaurantes</div>
+      <div class="line"></div>
+      <div class="row"><span>Mesa:</span><span class="bold">${ticket.mesa}</span></div>
+      <div class="row"><span>Mesero:</span><span>${ticket.mesero}</span></div>
+      <div class="row"><span>Hora:</span><span>${ticket.hora}</span></div>
+      <div class="row"><span>Ticket:</span><span>${ticket.codigo}</span></div>
+      <div class="line"></div>
+      ${(ticket.items || []).map(i => `
+        <div class="row">
+          <span>${i.nombre} x${i.qty}</span>
+          <span>€${(Number(i.precio) * i.qty).toFixed(2)}</span>
+        </div>
+      `).join("")}
+      <div class="line"></div>
+      ${Number(ticket.propina) > 0 ? `
+        <div class="row"><span>Subtotal:</span><span>€${(Number(ticket.total) - Number(ticket.propina)).toFixed(2)}</span></div>
+        <div class="row"><span>Propina:</span><span>€${Number(ticket.propina).toFixed(2)}</span></div>
+      ` : ""}
+      <div class="row total"><span>TOTAL:</span><span>€${Number(ticket.total).toFixed(2)}</span></div>
+      <div class="row small"><span>Método:</span><span>${mp[metodo] || metodo}</span></div>
+      <div class="line"></div>
+      <div class="center small" style="margin-top:8px;">¡Gracias por su visita!</div>
+      <div class="center small">cucharal.com</div>
+    </body></html>
+  `);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 500);
+};
+
+const imprimirComanda = (comanda) => {
+  const win = window.open("", "_blank", "width=400,height=500");
+  win.document.write(`
+    <html><head><title>Comanda ${comanda.codigo}</title>
+    <style>
+      body { font-family: 'Courier New', monospace; font-size: 14px; margin: 0; padding: 16px; width: 280px; }
+      .center { text-align: center; }
+      .bold { font-weight: bold; }
+      .big { font-size: 22px; font-weight: bold; }
+      .line { border-top: 2px dashed #000; margin: 8px 0; }
+      .item { font-size: 15px; font-weight: bold; margin: 6px 0; }
+      .nota { font-size: 12px; font-style: italic; margin-left: 10px; }
+      .qty { font-size: 20px; font-weight: bold; }
+    </style></head>
+    <body>
+      <div class="center bold" style="font-size:16px;">*** COMANDA ***</div>
+      <div class="line"></div>
+      <div class="big center">MESA ${comanda.mesa}</div>
+      <div class="center">${comanda.zona} · ${comanda.mesero}</div>
+      <div class="center">${comanda.codigo} · ${new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
+      <div class="line"></div>
+      ${(comanda.items || []).map(i => `
+        <div class="item"><span class="qty">${i.qty}x</span> ${i.nombre}</div>
+        ${i.nota ? `<div class="nota">⚠️ ${i.nota}</div>` : ""}
+      `).join("")}
+      <div class="line"></div>
+    </body></html>
+  `);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 500);
+};
+
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1362,6 +1442,7 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
     setPropinaPct(0);
     setPropinaManual("");
     toast(`✅ Ticket ${codigo} · Cocina avisada · Mesa ${mesaActual} liberada`);
+    imprimirTicket({ codigo, mesa: mesaActual, mesero: usuario.nombre, hora, items, total: totalConPropina, propina: montoPropina }, metodo);
     cargar();
     setVista("historial");
   };
@@ -1508,6 +1589,7 @@ await db("comandas", { metodo: "DELETE", filtro: `?mesa=eq.${+mesaActual}` });
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: C.accent }}>€{Number(t.total).toFixed(2)}</div>
                   <div style={{ fontSize: 11, color: mp.color, fontWeight: 600 }}>{mp.icon} {mp.label}</div>
+                  <button onClick={() => imprimirTicket(t, t.metodo)} style={{ marginTop: 6, background: C.soft, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 10px", fontSize: 11, cursor: "pointer", color: C.muted, fontWeight: 600 }}>🖨️ Imprimir</button>
                 </div>
               </div>
             );
@@ -2792,7 +2874,10 @@ const ModuloMermas = ({ usuario, toast }) => {
  
                 <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}` }}>
                   {comanda.estado === "listo" ? (
-                    <div style={{ width: "100%", textAlign: "center", color: C.success, fontWeight: 900, fontSize: 13, padding: "10px" }}>✓ Lista — esperando cobro en TPV</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ width: "100%", textAlign: "center", color: C.success, fontWeight: 900, fontSize: 13, padding: "6px" }}>✓ Lista — esperando cobro en TPV</div>
+                      <button onClick={() => imprimirComanda(comanda)} style={{ width: "100%", background: C.soft, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px", fontSize: 12, fontWeight: 700, cursor: "pointer", color: C.muted }}>🖨️ Reimprimir comanda</button>
+                    </div>
                   ) : (
                     <button onClick={() => marcarListo(comanda)} disabled={!todosListos} style={{
                       width: "100%", background: todosListos ? C.success : C.soft, color: todosListos ? "#fff" : C.faint,
