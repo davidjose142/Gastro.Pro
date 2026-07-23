@@ -1161,7 +1161,7 @@ const ModuloMesas = ({ usuario, toast }) => {
           </div>
           <div style={{ display: "flex", flex: 1, overflow: "hidden", gap: 0 }}>
             {/* Carta - columna izquierda */}
-            <div style={{ flex: 1, overflowY: "auto", padding: 14, borderRight: carrito.length > 0 ? `1px solid ${C.border}` : "none" }}>
+            <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: 14, borderRight: carrito.length > 0 ? `1px solid ${C.border}` : "none" }}>
               <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Añadir al pedido</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {platos.map((p) => (
@@ -1175,7 +1175,7 @@ const ModuloMesas = ({ usuario, toast }) => {
             </div>
             {/* Pedido actual - columna derecha */}
             {carrito.length > 0 && (
-              <div style={{ width: 200, overflowY: "auto", padding: 14, background: C.accentLight, display: "flex", flexDirection: "column" }}>
+              <div style={{ width: 180, minWidth: 180, overflowY: "auto", padding: 14, background: C.accentLight, display: "flex", flexDirection: "column" }}>
                 <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Pedido</div>
                 {carrito.map((i) => (
                   <div key={i.id} style={{ marginBottom: 10 }}>
