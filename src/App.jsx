@@ -1018,7 +1018,7 @@ const ModuloMesas = ({ usuario, toast }) => {
 
   return (
     <div style={{ display: "flex", gap: 20, height: "calc(100vh - 130px)" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div style={{ display: seleccionada ? "none" : "flex", flex: 1, flexDirection: "column", minWidth: 0 }}>
 
         {/* Header */}
         <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
@@ -1058,7 +1058,7 @@ const ModuloMesas = ({ usuario, toast }) => {
         </div>
 
         {/* VISTA OPERACIÓN */}
-        {vista === "operacion" && (
+        {vista === "operacion" && !seleccionada && (
           <div style={{ flex: 1, overflowY: "auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 14 }}>
               {mesasFiltradas.map((mesa) => {
@@ -1139,9 +1139,9 @@ const ModuloMesas = ({ usuario, toast }) => {
         )}
       </div>
 
-      {/* Panel lateral pedido */}
+      {/* Panel pedido - pantalla completa cuando hay mesa seleccionada */}
       {seleccionada && vista === "operacion" && (
-        <div style={{ width: 300, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", flexShrink: 0, boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
+        <div style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, display: "flex", flexDirection: "column", boxShadow: "0 2px 8px rgba(15,23,42,0.05)" }}>
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${C.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.text }}>Mesa {seleccionada.numero}</h3>
